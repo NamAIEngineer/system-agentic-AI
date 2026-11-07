@@ -5,6 +5,7 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -13,9 +14,30 @@ from classifier_contract import DECISION_QUESTIONS, QUESTIONS, decision_question
 
 
 MODEL_REVISION = "fba8ca9292a705e21b14a4c5150e79a4ddcc8db3"
-MODEL_PATH = Path.home() / ".cache/huggingface/hub/models--chinhnc--Quyet-1.0-Tiny/snapshots" / MODEL_REVISION
-HOST = "127.0.0.1"
-PORT = 8766
+_default_hf_home = Path(os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))).expanduser()
+
+
+def _model_path() -> Path:
+    configured = os.environ.get("SYSTEM_AGENTIC_QUYET_MODEL_PATH", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    cache_root = os.environ.get("SYSTEM_AGENTIC_QUYET_MODEL_CACHE", "").strip()
+    if not cache_root:
+        state_root = os.environ.get("SYSTEM_AGENTIC_QUYET_ROOT", "").strip()
+        cache_root = str(Path(state_root).expanduser() / "model-cache") if state_root else str(_default_hf_home)
+    root = Path(cache_root).expanduser()
+    if (root / "quyet_config.json").is_file():
+        return root.resolve()
+    return (root / "hub" / "models--chinhnc--Quyet-1.0-Tiny" / "snapshots" / MODEL_REVISION).resolve()
+
+
+MODEL_PATH = _model_path()
+_configured_url = os.environ.get("SYSTEM_AGENTIC_QUYET_URL", "http://127.0.0.1:8766")
+_parsed_url = urlparse(_configured_url)
+HOST = os.environ.get("SYSTEM_AGENTIC_QUYET_HOST", _parsed_url.hostname or "127.0.0.1")
+PORT = int(os.environ.get("SYSTEM_AGENTIC_QUYET_PORT", str(_parsed_url.port or 8766)))
+if HOST not in {"127.0.0.1", "localhost", "::1"}:
+    raise RuntimeError("Quyet service must bind to loopback")
 MAX_REQUEST_BYTES = 64 * 1024
 
 

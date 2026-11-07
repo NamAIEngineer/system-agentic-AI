@@ -21,8 +21,9 @@ def main() -> int:
 
     backend = os.environ.get("SYSTEM_AGENTIC_CLASSIFIER", "laya").strip().lower()
     if backend == "quyet":
+        quyet_url = os.environ.get("SYSTEM_AGENTIC_QUYET_URL", "http://127.0.0.1:8766").rstrip("/")
         request = urllib.request.Request(
-            "http://127.0.0.1:8766/predict",
+            f"{quyet_url}/predict",
             data=json.dumps({"task": task}, ensure_ascii=False).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",

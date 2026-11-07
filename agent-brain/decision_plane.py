@@ -113,8 +113,9 @@ def _quyet_decide(
         payload["module_options"] = module_options
     if execution_class_options is not None:
         payload["execution_class_options"] = execution_class_options
+    quyet_url = os.environ.get("SYSTEM_AGENTIC_QUYET_URL", "http://127.0.0.1:8766").rstrip("/")
     request = urllib.request.Request(
-        "http://127.0.0.1:8766/decision",
+        f"{quyet_url}/decision",
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",

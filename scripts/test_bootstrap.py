@@ -98,6 +98,27 @@ class BootstrapContractTests(unittest.TestCase):
             self.assertFalse(state.exists())
             self.assertFalse(cache.exists())
 
+    def test_quyet_install_scopes_pip_cache_to_state_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            state = Path(temp) / "state"
+            cache = Path(temp) / "cache"
+            spec = importlib.util.spec_from_file_location("setup_quyet_for_test", ROOT / "scripts" / "setup-quyet.py")
+            self.assertIsNotNone(spec and spec.loader)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            args = type("Args", (), {
+                "allow_network": True,
+                "allow_model_download": True,
+                "state_root": state,
+                "model_cache": cache,
+            })()
+            with patch.object(module.subprocess, "run") as run:
+                run.return_value = subprocess.CompletedProcess([], 0)
+                module.install(args)
+            install_env = run.call_args_list[1].kwargs["env"]
+            self.assertEqual(install_env["PIP_CACHE_DIR"], str((state / "pip-cache").resolve()))
+
     def test_quyet_server_rejects_non_loopback_binding(self) -> None:
         env = {"SYSTEM_AGENTIC_QUYET_URL": "http://0.0.0.0:18767"}
         result = self.run_script_with_env("quyet-local-server.py", env)

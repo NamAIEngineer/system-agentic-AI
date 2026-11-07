@@ -111,7 +111,12 @@ def install(args: argparse.Namespace) -> int:
         subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
     python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     child_env = os.environ.copy()
-    child_env.update({"HF_HOME": str(cache_root), "XDG_CACHE_HOME": str(state_root / "cache"), "TRANSFORMERS_CACHE": str(cache_root)})
+    child_env.update({
+        "HF_HOME": str(cache_root),
+        "XDG_CACHE_HOME": str(state_root / "cache"),
+        "TRANSFORMERS_CACHE": str(cache_root),
+        "PIP_CACHE_DIR": str(state_root / "pip-cache"),
+    })
     subprocess.run([str(python), "-m", "pip", "install", "--disable-pip-version-check", "quyet==1.0.2"], check=True, env=child_env)
     code = "import quyet; quyet.load('chinhnc/Quyet-1.0-Tiny', revision='fba8ca9292a705e21b14a4c5150e79a4ddcc8db3', device='cpu')"
     subprocess.run([str(python), "-c", code], check=True, env=child_env)

@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "auto_triggers": [
+    "đội lập trình",
+    "đội ai",
+    "tự chia task",
+    "tự phân công",
+    "autonomous team",
+    "multi-worker"
+  ],
+  "max_workers": 2,
+  "worker_wait_seconds": 600,
+  "review_fix_rounds": 3,
+  "worker_provider_policy": "live-registry-priority",
+  "ownership": "parallel workers write only their declared evidence scope; integration is serialized",
+  "auto_submit": {
+    "enabled": true,
+    "team_for_action_goals": true,
+    "execution_policy": "WORKSPACE_WRITE",
+    "resume_active_run_on_continue": true,
+    "deduplication": "session-workspace-prompt-sha256"
+  },
+  "chatgpt_adapter": {
+    "status": "APPROVAL_GATED_BOUNDARY",
+    "transport": "authorized normal Chrome session",
+    "memory": "hstry",
+    "external_write_requires_approval": true,
+    "implementation": "agent-brain/modules/chatgpt_web_adapter.py",
+    "bridge_url_env": "SYSTEM_AGENTIC_CHATGPT_BRIDGE_URL",
+    "state_root_env": "SYSTEM_AGENTIC_CHATGPT_STATE_ROOT",
+    "bridge_status": "CONFIGURED",
+    "bridge_health_url": "http://127.0.0.1:8891/health",
+    "bridge_state_root": "${SYSTEM_AGENTIC_CHATGPT_STATE_ROOT}",
+    "bridge_auth_file": "${SYSTEM_AGENTIC_CHATGPT_STATE_ROOT}/bridge.auth",
+    "routing_config": "agent-brain/chatgpt-routing.json",
+    "routing_policy": "regular_first_work_fallback",
+    "fallback_errors": [
+      "CHATGPT_WORK_QUOTA_EXHAUSTED",
+      "UNAVAILABLE",
+      "bridge_unavailable",
+      "ConnectionError",
+      "TimeoutError",
+      "URLError",
+      "HTTPError"
+    ],
+    "work_route_requires_explicit_configuration": true
+  }
+}

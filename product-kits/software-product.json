@@ -1,0 +1,8 @@
+{
+  "id": "software-product",
+  "name": "Software product",
+  "category": "Build",
+  "description": "Khởi tạo một sản phẩm phần mềm với engineering workflow, policy, knowledge và kiểm tra trước khi phát hành.",
+  "capabilities": ["system-one", "orchestration", "engineering", "knowledge", "efficiency", "learning"],
+  "workflows": ["product-discovery", "implementation-plan", "independent-review", "release-readiness"]
+}

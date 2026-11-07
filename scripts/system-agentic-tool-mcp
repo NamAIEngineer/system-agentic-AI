@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""Minimal stdio MCP adapter for the shared System Agentic Tool Runtime."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+WORKBENCH_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(WORKBENCH_ROOT / "agent-brain"))
+sys.path.insert(0, str(WORKBENCH_ROOT / "products" / "agent-runtime"))
+from tool_runtime import ToolRuntime, ToolRuntimeError  # noqa: E402
+from tool_queue import WorkerExecutionBackend  # noqa: E402
+
+
+PROTOCOL_VERSION = "2024-11-05"
+
+
+class StdioMcpAdapter:
+    """Transport adapter: protocol parsing/serialization only, runtime owns tools."""
+
+    def __init__(self, runtime: ToolRuntime) -> None:
+        self.runtime = runtime
+
+    def handle(self, request: Any) -> dict[str, Any] | None:
+        if not isinstance(request, dict) or request.get("jsonrpc") != "2.0":
+            return self._error(request.get("id") if isinstance(request, dict) else None, -32600, "Invalid Request")
+        method = request.get("method")
+        request_id = request.get("id")
+        if not isinstance(method, str):
+            return self._error(request_id, -32600, "Invalid Request")
+        if method == "notifications/initialized" or method.startswith("notifications/"):
+            return None
+        params = request.get("params") or {}
+        if not isinstance(params, dict):
+            return self._error(request_id, -32602, "Invalid params")
+        if method == "initialize":
+            return self._response(request_id, {
+                "protocolVersion": PROTOCOL_VERSION,
+                "capabilities": {"tools": {"listChanged": False}},
+                "serverInfo": {"name": "system-agentic-tool-runtime", "version": "1.0.0"},
+            })
+        if method == "ping":
+            return self._response(request_id, {})
+        if method == "tools/list":
+            return self._response(request_id, {"tools": self.runtime.list_tools()})
+        if method == "tools/call":
+            name = params.get("name")
+            arguments = params.get("arguments", {})
+            result = self.runtime.call(name, arguments, trace_context={
+                "request_id": request_id,
+                "adapter": "mcp",
+                "caller": os.environ.get("SYSTEM_AGENTIC_TOOL_CALLER", "unknown"),
+            })
+            payload: dict[str, Any] = {"content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}]}
+            if result["status"] in {"REFUSED", "FAILED", "TIMED_OUT"}:
+                payload["isError"] = True
+            return self._response(request_id, payload)
+        return self._error(request_id, -32601, "Method not found")
+
+    @staticmethod
+    def _response(request_id: Any, result: dict[str, Any]) -> dict[str, Any]:
+        return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
+    @staticmethod
+    def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
+        return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
+
+
+def main() -> int:
+    workspace = os.environ.get("SYSTEM_AGENTIC_TOOL_WORKSPACE") or os.getcwd()
+    policy = os.environ.get("SYSTEM_AGENTIC_TOOL_EXECUTION_POLICY", "READ_ONLY")
+    try:
+        runtime = ToolRuntime(workspace, policy, worker_backend=WorkerExecutionBackend())
+    except (OSError, ToolRuntimeError) as exc:
+        print(f"system-agentic-tool-mcp: {exc}", file=sys.stderr)
+        return 2
+    adapter = StdioMcpAdapter(runtime)
+    for line in sys.stdin:
+        try:
+            request = json.loads(line)
+            response = adapter.handle(request)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            response = adapter._error(None, -32700, f"Parse error: {type(exc).__name__}")
+        if response is not None:
+            sys.stdout.write(json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n")
+            sys.stdout.flush()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

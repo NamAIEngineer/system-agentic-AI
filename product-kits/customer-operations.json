@@ -1,0 +1,8 @@
+{
+  "id": "customer-operations",
+  "name": "Customer operations",
+  "category": "Customer experience",
+  "description": "Nền cho support, ticket triage, knowledge-backed response và review trước khi liên hệ khách.",
+  "capabilities": ["system-one", "orchestration", "knowledge", "efficiency"],
+  "workflows": ["ticket-triage", "response-draft", "escalation-review", "resolution-summary"]
+}

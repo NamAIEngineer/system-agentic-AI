@@ -1,0 +1,454 @@
+{
+  "schema_version": 1,
+  "modules": [
+    {
+      "id": "agent-desktop",
+      "name": "Vercel Agent Desktop",
+      "repo": "agent-brain",
+      "enabled": true,
+      "available": null,
+      "status": "UNKNOWN",
+      "task_types": [
+        "native-desktop-automation",
+        "desktop-observation",
+        "desktop-action-verification"
+      ],
+      "capabilities": [
+        "desktop.automation",
+        "desktop.snapshot",
+        "desktop.action"
+      ],
+      "invocation_type": "local-mcp-stdio",
+      "execution_mode": "native_desktop",
+      "execution_adapter": "modules.agent_desktop_adapter.execute_agent_desktop_module",
+      "adapter_status": "implemented",
+      "adapterStatus": "READ_ONLY",
+      "adapter_readiness": "CONTROLLED",
+      "requires_provider": null,
+      "verification": [
+        "agent-brain/modules/agent_desktop_adapter.py",
+        "agent-brain/modules/test_agent_desktop_adapter.py"
+      ],
+      "availability_probe": {
+        "type": "executable",
+        "name": "agent-desktop"
+      },
+      "declared_runtime_state": "per-task-stdio-mcp",
+      "role": "UTILITY",
+      "input_artifact_types": [
+        "desktop/task"
+      ],
+      "output_artifact_types": [
+        "application/json",
+        "desktop/evidence",
+        "desktop/trace"
+      ],
+      "execution_modes": [
+        "READ_ONLY",
+        "MUTATING"
+      ],
+      "mutation_mode": "MIXED",
+      "max_concurrency": 1,
+      "priority": 100,
+      "metadata": {
+        "source": "https://github.com/vercel-labs/agent-desktop",
+        "version": "1.2.0",
+        "package_integrity": "sha512-sp8hHs8JfnuZe8ZQwiKZrqSOlu26SSeZXkjDog4KsU31L09G3uZJa8pITGN2vORif9uuh0iOSJHD146CEyTqag==",
+        "mcp_command": [
+          "agent-desktop",
+          "mcp"
+        ],
+        "mcp_protocol": "2024-11-05",
+        "tool_count_verified": 67,
+        "startup_flags": [
+          "--session",
+          "--headed",
+          "--trace"
+        ],
+        "supported_platforms": [
+          "macos",
+          "windows",
+          "linux"
+        ],
+        "routing": "native desktop only; use browser capability for DOM/web content"
+      },
+      "test_command": "python3 -m unittest agent-brain/modules/test_agent_desktop_adapter.py"
+    },
+    {
+      "id": "system-one",
+      "name": "Design OS System One",
+      "repo": "design-os-system-one",
+      "enabled": true,
+      "available": null,
+      "task_types": [
+        "structured-decision",
+        "task-classification",
+        "browser-automation"
+      ],
+      "capabilities": [
+        "structured.decisions",
+        "local.classification",
+        "browser.automation"
+      ],
+      "invocation_type": "python-runtime-and-cli",
+      "adapter_status": "not_implemented",
+      "requires_provider": null,
+      "verification": [
+        "design-os-system-one/REPORT.md",
+        "${SYSTEM_AGENTIC_REFERENCES_ROOT}/design-os-system-one/packages/laya-mlx/.venv/bin/python"
+      ],
+      "availability_probe": {
+        "type": "workspace_path",
+        "path": "${SYSTEM_AGENTIC_REFERENCES_ROOT}/design-os-system-one/packages/laya-mlx/.venv/bin/python"
+      },
+      "declared_runtime_state": "on-demand-local-runtime"
+    },
+    {
+      "id": "browser-agent",
+      "name": "Shared Playwright Browser Agent",
+      "repo": "agent-brain/.browser-agent",
+      "workspace_path": "${SYSTEM_AGENTIC_AI_ROOT}/agent-brain/.browser-agent",
+      "enabled": true,
+      "available": null,
+      "status": "READY",
+      "task_types": [
+        "browser-automation",
+        "browser-functional-test",
+        "browser-evidence"
+      ],
+      "capabilities": [
+        "browser.automation"
+      ],
+      "invocation_type": "local-playwright-disposable-context",
+      "execution_adapter": "modules.browser_adapter.execute_browser_module",
+      "adapter_status": "implemented",
+      "adapterStatus": "PRODUCTION_READY",
+      "adapter_readiness": "CONTROLLED",
+      "requires_provider": null,
+      "verification": [
+        "agent-brain/modules/browser_adapter.py",
+        "agent-brain/modules/browser_runner.mjs"
+      ],
+      "availability_probe": {
+        "type": "executable",
+        "name": "node"
+      },
+      "declared_runtime_state": "on-demand-local-runtime",
+      "execution_modes": [
+        "READ_ONLY",
+        "MUTATING"
+      ],
+      "mutation_mode": "MIXED",
+      "max_concurrency": 1,
+      "priority": 110,
+      "metadata": {
+        "engine": "Playwright",
+        "scope": "disposable local browser context; workspace artifacts only"
+      }
+    },
+    {
+      "id": "coding-agent",
+      "name": "Shared Workspace Coding Agent",
+      "repo": "agent-brain/.coding-agent",
+      "workspace_path": "${SYSTEM_AGENTIC_AI_ROOT}/agent-brain/.coding-agent",
+      "enabled": true,
+      "available": null,
+      "status": "READY",
+      "task_types": [
+        "coding-execution",
+        "test-repair",
+        "source-edit"
+      ],
+      "capabilities": [
+        "software.coding"
+      ],
+      "invocation_type": "workspace-bounded-native-shell",
+      "execution_adapter": "modules.coding_adapter.execute_coding_module",
+      "adapter_status": "implemented",
+      "adapterStatus": "PRODUCTION_READY",
+      "adapter_readiness": "CONTROLLED",
+      "requires_provider": null,
+      "verification": [
+        "agent-brain/modules/coding_adapter.py"
+      ],
+      "availability_probe": {
+        "type": "executable",
+        "name": "python3"
+      },
+      "declared_runtime_state": "on-demand-local-runtime",
+      "execution_modes": [
+        "READ_ONLY",
+        "MUTATING"
+      ],
+      "mutation_mode": "MIXED",
+      "max_concurrency": 1,
+      "priority": 110,
+      "metadata": {
+        "scope": "assigned workspace only; explicit patch and verification command"
+      }
+    },
+    {
+      "id": "orchestration",
+      "name": "Orchestration System by Jang",
+      "repo": "orchestration-system-by-jang",
+      "enabled": true,
+      "available": null,
+      "task_types": [
+        "agent-orchestration",
+        "delegated-workflow"
+      ],
+      "capabilities": [
+        "agent.dispatch-design",
+        "agent.lifecycle-management",
+        "agent.independent-verification"
+      ],
+      "invocation_type": "codex-skill-procedure",
+      "adapter_status": "not_implemented",
+      "requires_provider": null,
+      "verification": [
+        "orchestration-system-by-jang/REPORT.md",
+        "~/.codex/skills/orchestration-system-by-jang/SKILL.md"
+      ],
+      "availability_probe": {
+        "type": "codex_skill",
+        "path": "orchestration-system-by-jang/SKILL.md"
+      },
+      "declared_runtime_state": "interactive-procedure"
+    },
+    {
+      "id": "gstack",
+      "name": "gstack review",
+      "repo": "gstack",
+      "enabled": true,
+      "available": null,
+      "task_types": [
+        "software.code-review",
+        "pre-landing-review"
+      ],
+      "capabilities": [
+        "software.code-review"
+      ],
+      "invocation_type": "codex-skill",
+      "adapter_status": "implemented",
+      "requires_provider": {
+        "provider_id": "codex",
+        "capability": "task.submit"
+      },
+      "verification": [
+        "gstack/REPORT.md",
+        "~/.codex/skills/gstack-review/SKILL.md",
+        "gstack/bin/gstack-skill-start"
+      ],
+      "availability_probe": {
+        "type": "gstack_review_skill"
+      },
+      "declared_runtime_state": "invoked-per-task"
+    },
+    {
+      "id": "pedagogy",
+      "name": "Design OS Pedagogy",
+      "repo": "design-os-pedagogy",
+      "enabled": true,
+      "available": null,
+      "task_types": [
+        "teaching-rehearsal"
+      ],
+      "capabilities": [
+        "pedagogy.rehearse",
+        "pedagogy.feedback",
+        "pedagogy.session"
+      ],
+      "invocation_type": "managed-local-domain-runtime",
+      "adapter_status": "implemented",
+      "requires_provider": null,
+      "verification": [
+        "design-os-pedagogy/REPORT.md",
+        "design-os-pedagogy/run_rehearsal.py",
+        "design-os-pedagogy/docs/rehearsal-contract.md",
+        "agent-brain/modules/pedagogy_runtime.py",
+        "http://127.0.0.1:8876/api/status"
+      ],
+      "availability_probe": {
+        "type": "workspace_path",
+        "path": "design-os-pedagogy/.venv/bin/python"
+      },
+      "runtime_probe": {
+        "type": "http_get",
+        "url": "http://127.0.0.1:8876/api/status"
+      },
+      "declared_runtime_state": "local-service",
+      "composition_contracts": {
+        "pedagogy.session": {
+          "context_match": {
+            "pedagogy_request.action": "export",
+            "pedagogy_request.format": "md"
+          },
+          "inputs": {},
+          "outputs": {
+            "export": {
+              "type": "text/markdown",
+              "artifact_type": "pedagogy-session-export"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "knowledge-builder",
+      "name": "Design OS Knowledge Builder",
+      "repo": "design-os-knowledge-builder",
+      "enabled": true,
+      "available": null,
+      "task_types": [
+        "knowledge-pack",
+        "source-validation"
+      ],
+      "capabilities": [
+        "knowledge.pack-compile",
+        "knowledge.source-governance",
+        "knowledge.validation"
+      ],
+      "invocation_type": "provider-queued-official-cli-workflow",
+      "adapter_status": "implemented",
+      "requires_provider": null,
+      "provider_requirements": [
+        "structured_artifact_generation",
+        "knowledge_builder_contract_compliance",
+        "workspace.write"
+      ],
+      "verification": [
+        "design-os-knowledge-builder/skills/es-knowledge-forge/SKILL.md",
+        "design-os-knowledge-builder/.venv/bin/knowledge-builder"
+      ],
+      "availability_probe": {
+        "type": "workspace_executable",
+        "path": "design-os-knowledge-builder/.venv/bin/knowledge-builder"
+      },
+      "declared_runtime_state": "on-demand-cli",
+      "composition_contracts": {
+        "knowledge.pack-compile": {
+          "context_match": {},
+          "inputs": {
+            "knowledge_sources": [
+              "text/markdown"
+            ]
+          },
+          "outputs": {
+            "pack": {
+              "type": "knowledge/ukmc-pack",
+              "path_field": "execution_context.module.knowledge_workflow.output_root"
+            }
+          },
+          "source_evidence_field": "execution_context.module.knowledge_workflow.sources",
+          "outcome_fields": {
+            "validation_status": "execution_context.module.knowledge_workflow.validation_status"
+          }
+        }
+      }
+    },
+    {
+      "id": "rea",
+      "name": "REA Reverse Engineering",
+      "repo": "third_party/rea",
+      "enabled": true,
+      "available": null,
+      "task_types": [
+        "reverse-engineering",
+        "application-analysis",
+        "binary-analysis",
+        "runtime-observation",
+        "network-capture-analysis"
+      ],
+      "capabilities": [
+        "REVERSE_ENGINEERING",
+        "reverse_engineering",
+        "reverse-engineering",
+        "rea",
+        "binary_analysis",
+        "application_analysis",
+        "runtime_analysis",
+        "evidence.collection"
+      ],
+      "invocation_type": "local-mcp-read-only",
+      "adapter_status": "implemented",
+      "requires_provider": {
+        "provider_id": "rea",
+        "capability": "REVERSE_ENGINEERING"
+      },
+      "verification": [
+        "third_party/rea/README.md",
+        "third_party/rea/package.json",
+        "third_party/rea/scripts/rea.mjs",
+        "agent-brain/modules/rea_adapter.py"
+      ],
+      "availability_probe": {
+        "type": "workspace_path",
+        "path": "third_party/rea/dist/mcp/main.js"
+      },
+      "declared_runtime_state": "per-task-stdio-mcp",
+      "execution_adapter": "modules.rea_adapter.ReaMcpProviderAdapter",
+      "role": "ANALYSIS",
+      "adapterStatus": "READ_ONLY",
+      "adapter_readiness": "CONTROLLED",
+      "input_artifact_types": [
+        "application/*",
+        "binary/*",
+        "android/*",
+        "managed/*",
+        "firmware/*",
+        "network/capture",
+        "web/network-capture",
+        "web/*",
+        "runtime/*",
+        "javascript/*"
+      ],
+      "output_artifact_types": [
+        "application/json",
+        "reverse-engineering/evidence",
+        "text/markdown"
+      ],
+      "execution_modes": [
+        "READ_ONLY"
+      ],
+      "mutation_mode": "READ_ONLY",
+      "max_concurrency": 1,
+      "priority": 10,
+      "metadata": {
+        "canonical_capability": "REVERSE_ENGINEERING",
+        "aliases": [
+          "reverse_engineering",
+          "reverse-engineering",
+          "rea",
+          "binary_analysis",
+          "application_analysis",
+          "runtime_analysis",
+          "evidence.collection"
+        ],
+        "source": "https://github.com/morluto/rea.git",
+        "version": "6.8.0",
+        "commit": "cd68181c90792775ef4b3fd4910982084f79c285",
+        "mcp_transport": "stdio",
+        "tool_allowlist": "read-only local artifact inspection; no runtime control or mutation"
+      }
+    }
+  ],
+  "optimization_layers": [
+    {
+      "id": "caveman",
+      "type": "optimization-layer",
+      "repo": "caveman",
+      "enabled": true,
+      "capabilities": [
+        "agent.output-shrink"
+      ],
+      "invocation_type": "local-cli-with-exact-recovery",
+      "adapter_status": "implemented",
+      "requires_provider": false,
+      "availability_probe": {
+        "type": "local_caveman_shrink"
+      },
+      "cloud": false,
+      "telemetry": "local-config"
+    }
+  ]
+}

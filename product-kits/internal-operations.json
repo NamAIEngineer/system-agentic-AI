@@ -1,0 +1,8 @@
+{
+  "id": "internal-operations",
+  "name": "Internal operations",
+  "category": "Operations",
+  "description": "Chuẩn hóa quy trình nội bộ với knowledge provenance, định tuyến theo rủi ro và manager approval.",
+  "capabilities": ["system-one", "orchestration", "knowledge", "efficiency"],
+  "workflows": ["request-intake", "policy-search", "exception-review", "monthly-control-report"]
+}

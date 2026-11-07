@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -n "${SYSTEM_AGENTIC_PYTHON:-}" ]]; then
+  python_bin="$SYSTEM_AGENTIC_PYTHON"
+else
+  # LaunchAgents inherit a minimal PATH. Prefer the pinned local runtime so
+  # provider discovery cannot silently fall back to macOS Python 3.9.
+  for candidate in "$HOME/.local/bin/python3.12" "$HOME/.local/bin/python3.11"; do
+    if [[ -x "$candidate" ]]; then
+      python_bin="$candidate"
+      break
+    fi
+  done
+  : "${python_bin:=$(command -v python3.12 || command -v python3.11 || command -v python3)}"
+fi
+exec "$python_bin" "$root/products/agent-runtime/agentic_runtime.py" "$@"

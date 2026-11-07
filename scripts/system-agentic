@@ -1,0 +1,482 @@
+#!/usr/bin/env python3
+"""Inspect shared System Agentic providers or sync their host homes."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+import uuid
+from dataclasses import asdict
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent-brain"))
+
+from providers.runtime import (  # noqa: E402
+    ProviderTask,
+    ProviderUnavailable,
+    WORKBENCH_ROOT,
+    adapter_for,
+    discover_providers,
+    eligible_providers,
+    provider_inventory,
+    select_provider,
+    sync_provider,
+)
+from modules.rea_adapter import rea_health  # noqa: E402
+from modules.runtime import (  # noqa: E402
+    module_candidates,
+    module_inventory,
+    normalize_module_result,
+    optimize_module_result,
+    optimization_layer_inventory,
+    prepare_module_task,
+    execute_pedagogy_module,
+    run_knowledge_builder_workflow,
+)
+from modules.workspace_resolver import ModuleRegistry, WorkspaceResolver  # noqa: E402
+from decision_plane import decide  # noqa: E402
+from providers.dispatch import task_from_spec, dispatch_task  # noqa: E402
+
+
+def _service_config(state_root: str | None = None):
+    from modules.orchestrator_service import ServiceConfig, service_config_from_env
+    config = service_config_from_env()
+    if state_root:
+        config.state_root = Path(state_root).expanduser()
+    return config
+
+
+def service_start(args: argparse.Namespace) -> int:
+    from modules.orchestrator_service import OrchestratorService, service_is_running
+    config = _service_config(args.state_root)
+    if args.foreground:
+        OrchestratorService(config).serve_forever()
+        return 0
+    if config.state_root.exists():
+        info_path = config.state_root / "service.json"
+        if info_path.exists():
+            try:
+                info = json.loads(info_path.read_text(encoding="utf-8"))
+                if info.get("status") == "RUNNING" and service_is_running(config):
+                    print(json.dumps({"status": "RUNNING", "already_running": True, **info}, ensure_ascii=False, indent=2))
+                    return 0
+            except (OSError, json.JSONDecodeError):
+                pass
+    root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(root / "agent-brain") + os.pathsep + env.get("PYTHONPATH", "")
+    env["SYSTEM_AGENTIC_ORCHESTRATOR_STATE_ROOT"] = str(config.state_root)
+    env["SYSTEM_AGENTIC_SERVICE_HOST"] = config.host
+    env["SYSTEM_AGENTIC_SERVICE_PORT"] = str(config.port)
+    log_path = config.state_root / "service.log"
+    config.state_root.mkdir(parents=True, exist_ok=True)
+    log = log_path.open("ab")
+    service_python = os.environ.get("SYSTEM_AGENTIC_SERVICE_PYTHON")
+    if not service_python:
+        preferred = Path.home() / ".local" / "bin" / "python3.12"
+        service_python = str(preferred) if preferred.is_file() else sys.executable
+    process = subprocess.Popen([service_python, "-m", "modules.orchestrator_service"], cwd=root,
+                               env=env, stdout=log, stderr=log, start_new_session=True)
+    deadline = time.monotonic() + args.wait_seconds
+    from modules.orchestrator_service import service_is_running
+    while time.monotonic() < deadline:
+        if service_is_running(config):
+            print(json.dumps({"status": "RUNNING", "pid": process.pid, "state_root": str(config.state_root),
+                              "host": config.host, "port": config.port}, ensure_ascii=False, indent=2))
+            return 0
+        time.sleep(0.05)
+    print(json.dumps({"status": "FAILED", "reason": "service did not become healthy", "pid": process.pid}, ensure_ascii=False, indent=2))
+    return 1
+
+
+def service_call(args: argparse.Namespace, operation: str) -> int:
+    from modules.orchestrator_service import service_request
+    config = _service_config(getattr(args, "state_root", None))
+    if operation == "health":
+        result = service_request("/health", config=config)
+    elif operation == "doctor":
+        try:
+            result = service_request("/doctor", config=config)
+        except (OSError, RuntimeError):
+            from modules.orchestrator_service import OrchestratorService
+            result = OrchestratorService(config).doctor()
+    elif operation == "submit":
+        payload = {"goal": args.goal, "workspace": args.workspace, "execution_policy": args.execution_policy}
+        if args.context:
+            payload["context"] = json.loads(Path(args.context).read_text(encoding="utf-8"))
+        if args.provider_policy:
+            payload["provider_policy"] = json.loads(Path(args.provider_policy).read_text(encoding="utf-8"))
+        if args.goal_run_id:
+            payload["goal_run_id"] = args.goal_run_id
+        result = service_request("/goals", method="POST", payload=payload, config=config)
+    elif operation == "resume":
+        result = service_request(f"/goals/{args.goal_run_id}/resume", method="POST", payload={}, config=config)
+    elif operation == "inspect":
+        result = service_request(f"/goals/{args.goal_run_id}", config=config)
+    elif operation == "overview":
+        result = service_request(f"/goals/{args.goal_run_id}/overview", config=config)
+    elif operation == "result":
+        result = service_request(f"/goals/{args.goal_run_id}/result", config=config)
+    else:
+        raise ValueError(f"Unknown service operation: {operation}")
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def service_stop(args: argparse.Namespace) -> int:
+    config = _service_config(args.state_root)
+    info_path = config.state_root / "service.json"
+    if not info_path.exists():
+        print(json.dumps({"status": "STOPPED", "reason": "no service state"}, ensure_ascii=False, indent=2))
+        return 0
+    try:
+        info = json.loads(info_path.read_text(encoding="utf-8"))
+        pid = int(info.get("pid", 0))
+        if pid > 0:
+            os.kill(pid, signal.SIGTERM)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                break
+            time.sleep(.05)
+        print(json.dumps({"status": "STOP_REQUESTED", "pid": pid}, ensure_ascii=False, indent=2))
+        return 0
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(json.dumps({"status": "FAILED", "reason": str(exc)}, ensure_ascii=False, indent=2))
+        return 1
+
+
+
+def dispatch(args: argparse.Namespace, *, module_id: str | None = None, module_capability: str | None = None) -> int:
+    if os.environ.get("SYSTEM_AGENTIC_EXECUTION_ROLE") == "worker":
+        payload = {"status": "REFUSED", "reason": "RECURSION_GUARD: dispatched workers cannot create child provider executions.", "dispatched": False}
+    else:
+        spec = json.loads(Path(args.task_spec).expanduser().read_text(encoding="utf-8"))
+        payload = dispatch_task(task_from_spec(spec), module_id=module_id,
+                                module_capability=module_capability, wait_seconds=args.wait_seconds)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0 if payload["status"] == "COMPLETED" else 2 if payload["status"] in {"REFUSED", "UNAVAILABLE"} else 1
+
+
+def task_status(args: argparse.Namespace) -> int:
+    task = ProviderTask(task_id=args.task_id, workspace=WORKBENCH_ROOT, objective="Status reconciliation", role="worker")
+    try:
+        adapter = adapter_for(args.provider)
+        result = adapter.status(task)
+        deadline = time.monotonic() + args.wait_seconds
+        while result.status in {"SUBMITTED", "RUNNING"} and time.monotonic() < deadline:
+            time.sleep(min(1, max(0, deadline - time.monotonic())))
+            result = adapter.status(task)
+        result = run_knowledge_builder_workflow(result, include_index=False)
+        result = normalize_module_result(result)
+        result = optimize_module_result(result)
+    except (ProviderUnavailable, ValueError) as exc:
+        print(json.dumps({"task_id": args.task_id, "provider": args.provider, "status": "UNKNOWN", "reason": str(exc)}, ensure_ascii=False, indent=2))
+        return 1
+    print(json.dumps({
+        "task_id": result.task_id,
+        "provider": result.provider_id,
+        "account": result.account_id,
+        "status": result.status,
+        "wait_timed_out": args.wait_seconds > 0 and result.status in {"SUBMITTED", "RUNNING"},
+        "execution_policy": result.execution_policy,
+        "execution_context": result.execution_context,
+        "summary": result.summary,
+        "evidence": list(result.evidence),
+        "errors": list(result.errors),
+        "started_at": result.started_at,
+        "finished_at": result.finished_at,
+        "duration_seconds": result.duration_seconds,
+        "queue_job_id": result.queue_job_id,
+    }, ensure_ascii=False, indent=2))
+    return 0 if result.status in {"COMPLETED", "SUBMITTED", "RUNNING"} else 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="system-agentic")
+    commands = parser.add_subparsers(dest="command", required=True)
+    providers = commands.add_parser("providers", help="show provider and account readiness")
+    providers.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    rea_health_cmd = commands.add_parser("provider-health", help="show one provider's live health")
+    rea_health_cmd.add_argument("provider", choices=["rea"])
+    decision = commands.add_parser("decision", help="get advisory host routing and module recommendations")
+    decision.add_argument("prompt", help="task text; only use --allow-typesafe for explicitly approved non-sensitive text")
+    decision.add_argument(
+        "--allow-typesafe", action="store_true",
+        help="explicitly allow sending this prompt to TypeSafe JEV if local Quyet is inconclusive",
+    )
+    sync = commands.add_parser("sync-provider", help="link shared brain skills into provider homes")
+    sync.add_argument("provider", choices=["codex", "claude", "gemini", "local-qwen", "all"])
+    candidates = commands.add_parser("candidates", help="query live providers for a role and capabilities")
+    candidates.add_argument("--role", required=True)
+    candidates.add_argument("--capability", action="append", default=[])
+    modules = commands.add_parser("modules", help="query registered modules and their live installation/runtime state")
+    module_commands = modules.add_subparsers(dest="module_command", required=True)
+    module_query = module_commands.add_parser("candidates", help="match modules by task type or capability")
+    module_query.add_argument("--task-type")
+    module_query.add_argument("--capability", action="append", default=[])
+    module_query.add_argument("--all", action="store_true", help="list every module registration")
+    module_run = commands.add_parser("dispatch-module", help="route one executable module through provider selection and queue")
+    module_run.add_argument("--module", required=True)
+    module_run.add_argument("--capability", required=True)
+    module_run.add_argument("task_spec")
+    module_run.add_argument("--wait-seconds", type=float, default=600)
+    optimizers = commands.add_parser("optimizers", help="show registered optimization layers and live local availability")
+    compose_plan = commands.add_parser("compose-plan", help="validate host-framed capability requests against live registry contracts")
+    compose_plan.add_argument("request_spec")
+    compose_run = commands.add_parser("compose-run", help="execute a bounded sequential module plan")
+    compose_run.add_argument("plan_spec")
+    compose_run.add_argument("--provider-policy", help="existing provider-policy JSON file, applied at execution; omitted keeps module privacy defaults")
+    compose_inspect = commands.add_parser("compose-inspect", help="inspect a saved workflow trace without executing or retrying")
+    compose_inspect.add_argument("trace_path")
+    system_compose = commands.add_parser("system-compose", help="design a bounded System Blueprint and optionally execute it")
+    system_compose.add_argument("request_spec", help="JSON file containing goal, workspace, and execution policy")
+    system_compose.add_argument("--run", action="store_true", help="compile and execute the generated blueprint")
+    system_compose.add_argument("--provider-policy", help="existing provider-policy JSON file")
+    goal_run = commands.add_parser("run", help="own a natural goal through the External Orchestrator")
+    goal_run.add_argument("goal")
+    goal_run.add_argument("--workspace", default=os.getcwd())
+    goal_run.add_argument("--execution-policy", default="WORKSPACE_WRITE", choices=["READ_ONLY", "WORKSPACE_WRITE"])
+    goal_run.add_argument("--context", help="JSON file containing domain context")
+    goal_run.add_argument("--provider-policy", help="existing provider-policy JSON file")
+    goal_run.add_argument("--state-root", help="External Orchestrator state directory")
+    goal_run.add_argument("--goal-run-id")
+    goal_run.add_argument("--direct", action="store_true", help="maintenance mode: execute in this caller process")
+    goal_plan = commands.add_parser("goal-plan", help="persist a goal plan without executing")
+    goal_plan.add_argument("goal")
+    goal_plan.add_argument("--workspace", default=os.getcwd())
+    goal_plan.add_argument("--execution-policy", default="WORKSPACE_WRITE", choices=["READ_ONLY", "WORKSPACE_WRITE"])
+    goal_plan.add_argument("--context")
+    goal_plan.add_argument("--provider-policy")
+    goal_plan.add_argument("--state-root")
+    goal_plan.add_argument("--goal-run-id")
+    goal_plan.add_argument("--direct", action="store_true", help="maintenance mode: plan in this caller process")
+    goal_resume = commands.add_parser("goal-resume", help="resume a persisted GoalRun")
+    goal_resume.add_argument("goal_run_id")
+    goal_resume.add_argument("--state-root")
+    goal_resume.add_argument("--direct", action="store_true", help="maintenance mode: resume in this caller process")
+    goal_inspect = commands.add_parser("goal-inspect", help="inspect a persisted GoalRun")
+    goal_inspect.add_argument("goal_run_id")
+    goal_inspect.add_argument("--state-root")
+    goal_inspect.add_argument("--direct", action="store_true", help="maintenance mode: read state without the service")
+    goal_overview = commands.add_parser("goal-overview", help="read a bounded goal/team overview")
+    goal_overview.add_argument("goal_run_id")
+    goal_overview.add_argument("--state-root")
+    service_start_cmd = commands.add_parser("service-start", help="start the local SYSTEM_AGENTIC_AI orchestration service")
+    service_start_cmd.add_argument("--state-root")
+    service_start_cmd.add_argument("--foreground", action="store_true")
+    service_start_cmd.add_argument("--wait-seconds", type=float, default=5)
+    service_health_cmd = commands.add_parser("service-health", help="inspect local orchestration service health")
+    service_health_cmd.add_argument("--state-root")
+    doctor_cmd = commands.add_parser("doctor", help="read-only local readiness diagnosis")
+    doctor_cmd.add_argument("--state-root")
+    service_stop_cmd = commands.add_parser("service-stop", help="request clean local service shutdown")
+    service_stop_cmd.add_argument("--state-root")
+    service_run_cmd = commands.add_parser("service-run", help="submit a goal to the local service")
+    service_run_cmd.add_argument("goal")
+    service_run_cmd.add_argument("--workspace", default=os.getcwd())
+    service_run_cmd.add_argument("--execution-policy", default="WORKSPACE_WRITE", choices=["READ_ONLY", "WORKSPACE_WRITE"])
+    service_run_cmd.add_argument("--context")
+    service_run_cmd.add_argument("--provider-policy")
+    service_run_cmd.add_argument("--state-root")
+    service_run_cmd.add_argument("--goal-run-id")
+    service_resume_cmd = commands.add_parser("service-resume", help="resume a goal through the local service")
+    service_resume_cmd.add_argument("goal_run_id")
+    service_resume_cmd.add_argument("--state-root")
+    pipeline_run = commands.add_parser("pipeline-run", help="execute a bounded module dependency graph through local-Qwen")
+    pipeline_run.add_argument("plan_spec")
+    pipeline_run.add_argument("--state-db", help="pipeline SQLite state path; defaults to the System-Agentic runtime directory")
+    pipeline_run.add_argument("--wait-seconds", type=float, default=600)
+    pipeline_inspect = commands.add_parser("pipeline-inspect", help="inspect saved pipeline state and events without executing")
+    pipeline_inspect.add_argument("pipeline_id")
+    pipeline_inspect.add_argument("--state-db", help="pipeline SQLite state path")
+    run = commands.add_parser("dispatch", help="select an eligible provider and execute a JSON task spec")
+    run.add_argument("task_spec")
+    run.add_argument("--wait-seconds", type=float, default=600)
+    status = commands.add_parser("status", help="reconcile an existing provider task without resubmitting")
+    status.add_argument("task_id")
+    status.add_argument("--provider", default="codex")
+    status.add_argument("--wait-seconds", type=float, default=0, help="poll this same task ID until terminal or timeout; never resubmits")
+    args = parser.parse_args()
+
+    try:
+        if args.command == "service-start":
+            return service_start(args)
+        elif args.command == "service-health":
+            return service_call(args, "health")
+        elif args.command == "doctor":
+            return service_call(args, "doctor")
+        elif args.command == "service-stop":
+            return service_stop(args)
+        elif args.command == "service-run":
+            return service_call(args, "submit")
+        elif args.command == "service-resume":
+            return service_call(args, "resume")
+        elif args.command == "goal-overview":
+            from modules.orchestrator_service import service_is_running, service_request
+            config = _service_config(args.state_root)
+            if service_is_running(config):
+                result = service_request(f"/goals/{args.goal_run_id}/overview", config=config)
+            else:
+                from modules.external_orchestrator import ExternalOrchestrator
+                result = ExternalOrchestrator(state_root=args.state_root).overview(args.goal_run_id)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        elif args.command == "providers":
+            result = provider_inventory()
+        elif args.command == "provider-health":
+            result = rea_health()
+        elif args.command == "decision":
+            result = decide(args.prompt, allow_typesafe=args.allow_typesafe)
+        elif args.command == "sync-provider":
+            result = sync_provider(args.provider)
+        elif args.command == "candidates":
+            result = {"role": args.role, "required_capabilities": args.capability, "candidates": [status.provider_id for status in eligible_providers(args.role, set(args.capability), discover_providers())]}
+        elif args.command == "modules":
+            if args.all:
+                result = {"modules": module_inventory(), "optimization_layers": optimization_layer_inventory()}
+            else:
+                result = {"task_type": args.task_type, "required_capabilities": args.capability, "modules": module_candidates(task_type=args.task_type, capabilities=set(args.capability))}
+        elif args.command == "optimizers":
+            result = {"optimization_layers": optimization_layer_inventory()}
+        elif args.command == "compose-plan":
+            from modules.composition import plan_goal
+            spec = json.loads(Path(args.request_spec).read_text())
+            result = plan_goal(spec["goal"], spec["requests"], workspace=spec["workspace"],
+                               execution_policy=spec.get("execution_policy", "READ_ONLY"),
+                               workflow_id=spec.get("workflow_id")).to_dict()
+        elif args.command == "compose-run":
+            from modules.composition import run_plan
+            from modules.pipeline_contracts import PipelinePlan
+            plan = PipelinePlan.from_dict(json.loads(Path(args.plan_spec).read_text()))
+            policy = json.loads(Path(args.provider_policy).read_text()) if args.provider_policy else None
+            if policy is not None and not isinstance(policy, dict):
+                raise ValueError("Provider policy must be an object")
+            result = run_plan(plan, provider_policy=policy)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if result["workflow_status"] in {"COMPLETED", "NOT_REQUIRED"} else 2
+        elif args.command == "compose-inspect":
+            result = json.loads(Path(args.trace_path).read_text())
+        elif args.command == "system-compose":
+            from modules.system_composer import design_system, run_system
+            spec = json.loads(Path(args.request_spec).read_text(encoding="utf-8"))
+            if not isinstance(spec, dict):
+                raise ValueError("System Composer request must be a JSON object")
+            blueprint = design_system(
+                spec["goal"], workspace=spec["workspace"],
+                execution_policy=spec.get("execution_policy", "WORKSPACE_WRITE"),
+                system_id=spec.get("system_id"), context=spec.get("context"),
+            )
+            if args.run:
+                policy = json.loads(Path(args.provider_policy).read_text(encoding="utf-8")) if args.provider_policy else None
+                if policy is not None and not isinstance(policy, dict):
+                    raise ValueError("Provider policy must be an object")
+                result = run_system(blueprint, provider_policy=policy)
+            else:
+                result = {"blueprint": blueprint.to_dict(), "system_execution_status": "NOT_RUN", "acceptance_passed": False}
+        elif args.command in {"run", "goal-plan"}:
+            if not args.direct:
+                from modules.orchestrator_service import service_is_running, service_request
+                config = _service_config(args.state_root)
+                if not service_is_running(config):
+                    raise RuntimeError("local orchestrator service is not running; use service-start or --direct maintenance mode")
+                payload = {"goal": args.goal, "workspace": args.workspace, "execution_policy": args.execution_policy}
+                if args.context:
+                    payload["context"] = json.loads(Path(args.context).read_text(encoding="utf-8"))
+                if args.provider_policy:
+                    payload["provider_policy"] = json.loads(Path(args.provider_policy).read_text(encoding="utf-8"))
+                if args.goal_run_id:
+                    payload["goal_run_id"] = args.goal_run_id
+                if args.command == "goal-plan":
+                    payload["defer_execution"] = True
+                result = service_request("/goals", method="POST", payload=payload, config=config)
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return 0
+            from modules.external_orchestrator import ExternalOrchestrator
+            context = json.loads(Path(args.context).read_text(encoding="utf-8")) if args.context else {}
+            policy = json.loads(Path(args.provider_policy).read_text(encoding="utf-8")) if args.provider_policy else None
+            orchestrator = ExternalOrchestrator(state_root=args.state_root)
+            run = orchestrator.create(args.goal, workspace=args.workspace, execution_policy=args.execution_policy,
+                                      context=context, provider_policy=policy, goal_run_id=args.goal_run_id)
+            run = orchestrator.plan(run.goal_run_id)
+            if args.command == "run" and run.current_state not in {"UNRESOLVED", "FAILED"}:
+                run = orchestrator.execute(run.goal_run_id)
+            result = orchestrator.result(run.goal_run_id)
+        elif args.command == "goal-resume":
+            if not args.direct:
+                from modules.orchestrator_service import service_is_running, service_request
+                config = _service_config(args.state_root)
+                if not service_is_running(config):
+                    raise RuntimeError("local orchestrator service is not running; use service-start or --direct maintenance mode")
+                result = service_request(f"/goals/{args.goal_run_id}/resume", method="POST", payload={}, config=config)
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return 0
+            from modules.external_orchestrator import ExternalOrchestrator
+            orchestrator = ExternalOrchestrator(state_root=args.state_root)
+            orchestrator.resume(args.goal_run_id)
+            result = orchestrator.result(args.goal_run_id)
+        elif args.command == "goal-inspect":
+            if not args.direct:
+                from modules.orchestrator_service import service_is_running, service_request
+                config = _service_config(args.state_root)
+                if service_is_running(config):
+                    result = service_request(f"/goals/{args.goal_run_id}/result", config=config)
+                    print(json.dumps(result, ensure_ascii=False, indent=2))
+                    return 0
+            from modules.external_orchestrator import ExternalOrchestrator
+            result = ExternalOrchestrator(state_root=args.state_root).result(args.goal_run_id)
+        elif args.command == "pipeline-run":
+            from modules.pipeline_contracts import PipelinePlan
+            from modules.pipeline_executor import PipelineExecutor, PipelineStore, SystemAgenticDispatchAdapter
+            if args.wait_seconds < 0:
+                raise ValueError("--wait-seconds must be zero or greater.")
+            plan = PipelinePlan.from_dict(json.loads(Path(args.plan_spec).read_text(encoding="utf-8")))
+            store = PipelineStore(args.state_db) if args.state_db else PipelineStore()
+            executor = PipelineExecutor(SystemAgenticDispatchAdapter(wait_seconds=args.wait_seconds), store=store)
+            result = executor.run(plan)
+            print(json.dumps(result, ensure_ascii=False, indent=2, default=lambda value: asdict(value)))
+            return 0 if result["pipeline"].status == "COMPLETED" else 2
+        elif args.command == "pipeline-inspect":
+            from modules.pipeline_executor import PipelineStore
+            store = PipelineStore(args.state_db) if args.state_db else PipelineStore()
+            result = store.inspect(args.pipeline_id)
+            print(json.dumps(result, ensure_ascii=False, indent=2, default=lambda value: asdict(value)))
+            return 0
+        elif args.command == "dispatch-module":
+            if args.wait_seconds < 0:
+                raise ValueError("--wait-seconds must be zero or greater.")
+            return dispatch(args, module_id=args.module, module_capability=args.capability)
+        elif args.command == "dispatch":
+            if args.wait_seconds < 0:
+                raise ValueError("--wait-seconds must be zero or greater.")
+            return dispatch(args)
+        else:
+            if args.wait_seconds < 0:
+                raise ValueError("--wait-seconds must be zero or greater.")
+            return task_status(args)
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"system-agentic: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    if args.command in {"run", "goal-resume"}:
+        return 0 if result.get("acceptance_passed") is True else 2
+    if args.command in {"goal-plan", "goal-inspect"}:
+        return 0
+    if args.command == "system-compose":
+        if not args.run:
+            return 0
+        return 0 if result.get("system_execution_status") == "COMPLETED" and result.get("acceptance_passed") is True else 2
+    if result.get("status") == "partial":
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

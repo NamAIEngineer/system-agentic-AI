@@ -1,0 +1,22 @@
+{
+  "reverse_engineering": [
+    "Analyze this Electron application and show evidence for how search works.",
+    "Reverse engineer this binary.",
+    "What functions exist in this executable?",
+    "Inspect this APK and list its API calls.",
+    "Analyze runtime behavior of this local app.",
+    "Inspect this network capture.",
+    "Analyze this firmware image.",
+    "Understand how this native app implements feature X.",
+    "Phân tích app này hoạt động như thế nào.",
+    "Phân tích file executable này."
+  ],
+  "coding": [
+    "Fix this TypeScript type error.", "Implement a Python API endpoint.", "Refactor this React component.",
+    "Add tests for the parser.", "Build a CLI for the project.", "Fix the database migration.",
+    "Update the CSS layout.", "Debug this Rust compile error.", "Add authentication middleware.", "Optimize this SQL query."
+  ],
+  "computer_use": ["Click the button on Chrome.", "Open Safari and inspect the page.", "Type this into the browser.", "Take a screenshot of the window.", "Use ORCA to navigate the app."],
+  "review": ["Review this PR.", "Review this diff for bugs.", "Run a gstack code review.", "Check this patch before landing.", "Audit this pull request."],
+  "ambiguous": ["Please handle this.", "Make this better.", "Do whatever is needed.", "Giúp tôi xử lý việc này.", "Should we change it?"]
+}

@@ -1,0 +1,8 @@
+{
+  "id": "learning-product",
+  "name": "Learning product",
+  "category": "Learning",
+  "description": "Tạo sản phẩm đào tạo với lesson, rehearsal, phản hồi và bằng chứng tiến bộ; không tuyên bố hiệu quả nếu chưa đánh giá.",
+  "capabilities": ["system-one", "orchestration", "knowledge", "learning"],
+  "workflows": ["learning-path-design", "guided-practice", "reflection-review", "pilot-evaluation"]
+}

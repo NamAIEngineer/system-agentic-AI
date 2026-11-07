@@ -1,0 +1,23 @@
+# Illustrative configuration. The JSON registry remains the policy source.
+providers:
+  codex:
+    enabled: false
+    adapter: codex-runtime-queue
+    data_flow: user-authorized-per-task
+    credential: host-login
+  local-qwen:
+    enabled: false
+    adapter: local-runtime-queue
+    data_flow: local-only
+    model_path: <configure-local-model-path>
+  rea:
+    enabled: false
+    adapter: rea-mcp-local
+    data_flow: local-read-only
+    checkout: <configure-rea-checkout>
+  claude:
+    enabled: false
+    adapter: unavailable-cli-placeholder
+  gemini:
+    enabled: false
+    adapter: unavailable-cli-placeholder

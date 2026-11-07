@@ -1,0 +1,3 @@
+interface:
+  display_name: "System Agentic AI"
+  short_description: "Build systems across Codex workspaces"

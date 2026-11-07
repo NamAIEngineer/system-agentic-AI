@@ -1,0 +1,8 @@
+{
+  "id": "knowledge-assistant",
+  "name": "Knowledge assistant",
+  "category": "Knowledge",
+  "description": "Xây trợ lý tri thức có nguồn dẫn, checksum, trust tier và tenant boundary.",
+  "capabilities": ["system-one", "orchestration", "knowledge", "efficiency"],
+  "workflows": ["source-ingestion", "source-review", "grounded-answer", "stale-source-audit"]
+}

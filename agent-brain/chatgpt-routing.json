@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "default_route": "regular",
+  "fallback_routes": ["work"],
+  "fallback_errors": [
+    "CHATGPT_WORK_QUOTA_EXHAUSTED",
+    "UNAVAILABLE",
+    "bridge_unavailable",
+    "ConnectionError",
+    "TimeoutError",
+    "URLError"
+  ],
+  "routes": {
+    "regular": {
+      "enabled": true,
+      "channel": "regular",
+      "bridge_url_env": "SYSTEM_AGENTIC_CHATGPT_BRIDGE_URL",
+      "auth_file_env": "SYSTEM_AGENTIC_CHATGPT_BRIDGE_AUTH_FILE",
+      "account_id_env": "SYSTEM_AGENTIC_CHATGPT_REGULAR_ACCOUNT_ID",
+      "default_account_id": "chrome-default-chatgpt"
+    },
+    "work": {
+      "enabled": true,
+      "channel": "work",
+      "bridge_url_env": "SYSTEM_AGENTIC_CHATGPT_WORK_BRIDGE_URL",
+      "auth_file_env": "SYSTEM_AGENTIC_CHATGPT_WORK_BRIDGE_AUTH_FILE",
+      "account_id_env": "SYSTEM_AGENTIC_CHATGPT_WORK_ACCOUNT_ID",
+      "default_account_id": "chrome-work-chatgpt",
+      "requires_explicit_configuration": true
+    }
+  }
+}

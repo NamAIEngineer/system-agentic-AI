@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "account_policy": {
+    "selection": "explicit-or-host-active",
+    "automatic_failover": false,
+    "provider_and_account_are_distinct": true
+  },
+  "codex_sync": {
+    "skills": [
+      {
+        "id": "system-agentic-ai",
+        "source": "agent-brain/skills/system-agentic-ai",
+        "target": "skills/system-agentic-ai"
+      },
+      {
+        "id": "orchestration-system-by-jang",
+        "source": "~/.codex/skills/orchestration-system-by-jang",
+        "target": "skills/orchestration-system-by-jang"
+      },
+      {
+        "id": "gstack-review",
+        "source": "gstack/.agents/skills/gstack-review",
+        "target": "skills/gstack-review"
+      }
+    ],
+    "instruction_markers": [
+      "<!-- SYSTEM_AGENTIC_AI_BEGIN -->",
+      "<!-- SYSTEM_AGENTIC_AI_END -->"
+    ]
+  },
+  "providers": [
+    {
+      "id": "codex",
+      "name": "Codex / OpenAI",
+      "adapter": "codex-runtime-queue",
+      "enabled": true,
+      "roles": [
+        "orchestrator",
+        "planner",
+        "worker",
+        "reviewer",
+        "verifier"
+      ],
+      "capabilities": [
+        "task.submit",
+        "task.resume",
+        "structured_artifact_generation",
+        "knowledge_builder_contract_compliance",
+        "workspace.write"
+      ],
+      "model": "account-default",
+      "fallback_priority": 10,
+      "sync_supported": true
+    },
+    {
+      "id": "local-qwen",
+      "name": "Local Qwen3",
+      "adapter": "local-runtime-queue",
+      "enabled": true,
+      "roles": [
+        "worker"
+      ],
+      "capabilities": [
+        "task.submit",
+        "task.resume",
+        "browser.public.read",
+        "structured_artifact_generation",
+        "knowledge_builder_contract_compliance",
+        "workspace.write"
+      ],
+      "model": "runtime-discovered",
+      "fallback_priority": 20,
+      "sync_supported": false
+    },
+    {
+      "id": "rea",
+      "name": "REA Reverse Engineering",
+      "adapter": "rea-mcp-local",
+      "enabled": true,
+      "roles": [
+        "analyst",
+        "worker",
+        "planner"
+      ],
+      "capabilities": [
+        "task.submit",
+        "REVERSE_ENGINEERING",
+        "reverse_engineering",
+        "mcp.tools",
+        "workspace.read"
+      ],
+      "model": "rea-agents@6.8.0",
+      "fallback_priority": 15,
+      "sync_supported": false,
+      "version": "6.8.0",
+      "source": "https://github.com/morluto/rea.git",
+      "location": "third_party/rea",
+      "commit": "cd68181c90792775ef4b3fd4910982084f79c285",
+      "transport": "stdio-mcp",
+      "execution_policy": "READ_ONLY"
+    },
+    {
+      "id": "claude",
+      "name": "Claude / Anthropic",
+      "adapter": "unavailable-cli-placeholder",
+      "enabled": false,
+      "roles": [
+        "orchestrator",
+        "worker",
+        "reviewer"
+      ],
+      "capabilities": [],
+      "model": null,
+      "fallback_priority": 30,
+      "sync_supported": false
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini / Google",
+      "adapter": "unavailable-cli-placeholder",
+      "enabled": false,
+      "roles": [
+        "worker",
+        "researcher",
+        "reviewer"
+      ],
+      "capabilities": [],
+      "model": null,
+      "fallback_priority": 40,
+      "sync_supported": false
+    }
+  ]
+}

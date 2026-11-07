@@ -1,0 +1,125 @@
+# System Agentic AI
+
+Provider-neutral AI workspace framework: shared operating contract, agent brain,
+bounded runtime, provider discovery, host skills, cross-platform bootstrap, and
+verification. It is a repository framework, not a GUI, SaaS product, dashboard,
+model bundle, account manager, or 9router distribution.
+
+## First run
+
+macOS, Linux, or Windows with Python 3.10+ and Git:
+
+```sh
+git clone https://github.com/NamAIEngineer/system-agentic-AI.git
+cd system-agentic-AI
+python3 scripts/setup.py --check-only
+./scripts/setup.sh
+./scripts/doctor.sh
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/NamAIEngineer/system-agentic-AI.git
+cd system-agentic-AI
+py -3 scripts/setup.py --check-only
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\doctor.ps1
+```
+
+Then open the cloned folder in ORCA or another compatible AI coding host and
+ask the host to read `AGENTS.md`, `README.md`, `WORKFLOW.md`, and
+`agent-brain/operating-contract.md` before initializing the workspace.
+
+`setup.py` and `doctor.py` do not install global software, modify shell profiles,
+change credentials, start services, or require ORCA/9router. The default setup
+path is local and offline. Reference repositories are optional and require an
+explicit command:
+
+```sh
+python3 scripts/install-references.py --check-only
+python3 scripts/install-references.py --install --id system-one --allow-network
+```
+
+Use `--skip-references` in CI. Never point the installer at an existing dirty
+checkout owned by another project.
+
+## What the framework provides
+
+- `agent-brain/`: provider-neutral contract, provider/module registries,
+  decision plane, bounded adapters, tool runtime, and host skill.
+- `products/agent-runtime/`: optional local queue/worker source. Runtime SQLite,
+  logs, model weights, and service state stay outside Git.
+- `packages/agent-core/`: reusable TypeScript capability/risk contracts.
+- `product-kits/`: generic scaffolds, not user projects.
+- `scripts/`: setup, doctor, reference installer, provider inventory, runtime
+  CLI, browser helpers, and smoke checks.
+- `docs/`: architecture, host boundaries, provider status, configuration,
+  troubleshooting, and source reports.
+
+## Host/provider support
+
+Codex/ORCA is the only execution adapter verified on the owner machine. Claude
+and Gemini can consume Markdown instructions but have no included execution
+adapter. Local Qwen, REA, browser, ChatGPT bridge, and `agent-desktop` are
+optional integrations whose live readiness must be checked on the user's host.
+Run:
+
+```sh
+python3 scripts/system-agentic providers
+python3 scripts/doctor.py --json
+```
+
+`agent-desktop` is optional and never bundled as a binary:
+
+```sh
+./scripts/setup-agent-desktop.sh --install
+./scripts/setup-agent-desktop.sh --check
+```
+
+9router is an optional external integration. System Agentic AI does not require
+9router. Do not copy its config, account pool, credentials, or runtime state.
+
+## Runtime task example
+
+After a user has deliberately configured a compatible local worker:
+
+```sh
+./scripts/agentic-runtime providers
+./scripts/agentic-runtime submit --workspace "$PWD" "Inspect this workspace and report evidence."
+```
+
+Explicit Codex processing is per-task and uses the user's own host login:
+
+```sh
+./scripts/agentic-runtime submit --backend codex --workspace "$PWD" "Run this task through Codex."
+```
+
+No provider is silently selected as a fallback. An unavailable optional provider
+returns `AUTH_REQUIRED`, `NOT_CONFIGURED`, `UNAVAILABLE`, `UNSUPPORTED`, or
+`UNVERIFIED`; it does not block the static framework.
+
+## Safety and data boundary
+
+Keep credentials, cookies, browser profiles, account homes, model caches, queue
+databases, logs, private projects, plans, and generated artifacts outside Git.
+The framework never inherits the owner's credentials. Read [SECURITY.md](SECURITY.md)
+and [docs/configuration.md](docs/configuration.md) before enabling a provider.
+
+## Verification
+
+```sh
+./scripts/smoke-test.sh
+```
+
+The smoke test is deterministic and offline. It checks Python syntax, manifest
+and registry shape, setup/doctor check-only paths, shell syntax, symlink safety,
+and CLI help. It does not claim that ORCA, a browser, 9router, a model, or a
+cloud account is authenticated.
+
+## License
+
+Original System Agentic AI code in this repository is MIT-licensed where the
+owner has distribution rights. Reference repositories remain separate and
+retain their own licenses. See [LICENSE](LICENSE) and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

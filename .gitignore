@@ -1,0 +1,117 @@
+node_modules/
+**/node_modules/
+**/dist/
+__pycache__/
+*.py[cod]
+**/.data/
+**/.env
+**/.env.*
+!**/.env.example
+LOCAL_ACCESS.txt
+.DS_Store
+
+# Public repository boundary: product workspaces, plans, and generated runs
+# remain local and are intentionally excluded from the cloneable framework.
+plans/
+products/*
+!products/agent-runtime/
+!products/agent-runtime/**
+artifacts/
+Library/
+mission/
+tmp/
+reports/
+apps/agentic-platform/
+app-main-*.js
+bootstrap-*.js
+main-*.js
+desktop-connection-*.js
+app-server-manager-hooks-*.js
+early-bootstrap.js
+TASK.md
+RESUME.md
+system-agentic-goals/
+.system-agentic-goals/
+.system-agentic-systems/
+.system-agentic-trusted/
+.system-agentic-trusted-registry.json
+.system-agentic-workflows/
+
+# Reference checkouts are installed by scripts/setup.sh and are
+# never vendored into this repository.
+design-os-system-one/
+orchestration-system-by-jang/
+design-os-pedagogy/
+design-os-knowledge-builder/
+gstack/
+caveman/
+third_party/rea/
+references/design-os-studio/
+
+# Local build/runtime output from optional framework components.
+**/.venv/
+**/.pytest_cache/
+**/.build-venv/
+**/build/
+**/out/
+**/.cache/
+**/.local/
+**/*.sqlite
+**/*.sqlite3
+**/*.sqlite-shm
+**/*.sqlite-wal
+**/*.db
+
+# Host-specific helpers from the private workbench.
+scripts/center-edu-*
+scripts/chatgpt-browser-bridge
+scripts/hosting-backup-install.sh
+scripts/jev-browser.sh
+scripts/decision-plane-jev.mjs
+docs/orca-9router-codex*
+
+# Local 9Router canary credentials and OAuth material
+.local/9router-canary/
+.local/share/9router-autologin/
+.venvs/
+*accounts-10.txt
+*oauth-results*
+*token*
+*credentials*
+
+# Host application metadata and generated local utilities.
+/SYSTEM_REPORT.md
+/package.json
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+tools/
+products/agent-runtime/**/__pycache__/
+products/agent-runtime/**/.pytest_cache/
+products/agent-runtime/local_agent.py.before-reconstruct
+# Root package build output is generated and not required by the source release.
+packages/**/dist/
+# Public candidate exclusions
+.env
+.env.*
+!.env.example
+.system-agentic-local/
+.system-agentic-goals/
+.system-agentic-systems/
+.system-agentic-workflows/
+runtime/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+*.token
+auth.json
+bridge.auth
+cookies*
+browser-profile/
+node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+plans/
+artifacts/
+Library/

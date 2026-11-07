@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "purpose": "Optional public reference repositories installed outside the main repository",
+  "references_root": "${SYSTEM_AGENTIC_REFERENCES_ROOT}",
+  "repositories": [
+    {"id":"system-one","url":"https://github.com/jangtrinh/design-os-system-one.git","branch":"main","commit":"ca2268f1ac24beace62815294fbf87fc2b7e4f15","required":false,"default_install":false,"license":"UNKNOWN","purpose":"Structured decisions, Laya local classification, and JEV browser patterns."},
+    {"id":"orchestration","url":"https://github.com/jangtrinh/orchestration-system-by-jang.git","branch":"main","commit":"8b1ad04245a5ac9882ad98dc00c835ce0ee0adff","required":false,"default_install":false,"license":"MIT","purpose":"Agent workflow framing, dispatch, verification, and reporting procedure."},
+    {"id":"gstack","url":"https://github.com/garrytan/gstack.git","branch":"main","commit":"e75a69c9e15164d090e080fa001dc515495ec350","required":false,"default_install":false,"license":"MIT+NOTICE","purpose":"Interactive coding, QA, design, security, and release skills."},
+    {"id":"pedagogy","url":"https://github.com/jangtrinh/design-os-pedagogy.git","branch":"main","commit":"9753b24edbb4941688171e9af40ad2759901af4f","required":false,"default_install":false,"license":"MIT","purpose":"Optional authored teaching rehearsal capability."},
+    {"id":"knowledge-builder","url":"https://github.com/jangtrinh/design-os-knowledge-builder.git","branch":"main","commit":"824503cde9a349349526d65e02396a00f7985c73","required":false,"default_install":false,"license":"MIT","purpose":"Optional provenance and knowledge-pack compiler."},
+    {"id":"caveman","url":"https://github.com/JuliusBrussee/caveman.git","branch":"main","commit":"c310c9d300df13a1dd9f5c086120ffd857a164a1","required":false,"default_install":false,"license":"Apache-2.0+NOTICE","purpose":"Optional output/token optimization middleware."},
+    {"id":"rea","url":"https://github.com/morluto/rea.git","branch":"main","commit":null,"required":false,"default_install":false,"license":"MIT","purpose":"Optional local read-only reverse-engineering MCP provider."}
+  ]
+}

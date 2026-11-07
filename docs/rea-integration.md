@@ -1,13 +1,12 @@
 # REA reverse-engineering capability
 
-System Agentic AI vendors the official [morluto/rea](https://github.com/morluto/rea) source at `third_party/rea`, pinned in [`third_party/rea.pin.json`](../third_party/rea.pin.json). The local adapter is [`agent-brain/modules/rea_adapter.py`](../agent-brain/modules/rea_adapter.py).
+REA is an optional external checkout. System Agentic AI does not vendor its source. The upstream URL and license boundary are recorded in [`sources.manifest.json`](../sources.manifest.json); the local adapter is [`agent-brain/modules/rea_adapter.py`](../agent-brain/modules/rea_adapter.py). Install the reference only with the explicit installer opt-in.
 
 ## Install and update
 
 ```bash
-cd third_party/rea
-npm ci --ignore-scripts
-npm run build:cached
+python3 scripts/install-references.py --install --id rea --allow-network
+# Then use the installed checkout under the configured references root.
 ```
 
 Node must satisfy REA's declared range (`22.23.4+`, `24.22.1+`, or `26.12.1+`). The adapter resolves a compatible local Node executable; it never downloads or upgrades one.
@@ -51,7 +50,7 @@ Native deep analysis still depends on locally installed Ghidra/Hopper/IDA. Missi
 
 ## Troubleshooting
 
-- `MISCONFIGURED` / MCP unavailable: verify Node `22.23.4+`, `24.22.1+`, or `26.12.1+`, then rebuild `third_party/rea` with the install commands above.
+- `MISCONFIGURED` / MCP unavailable: verify Node `22.23.4+`, `24.22.1+`, or `26.12.1+`, then rebuild the separately installed REA checkout.
 - `android_package=UNAVAILABLE`: configure an authorized local `REA_JADX_MCP_JAR` and Java.
 - `firmware=UNAVAILABLE`: install/configure Binwalk through `REA_BINWALK_COMMAND`.
 - `network_capture=UNAVAILABLE`: install/configure TShark through `REA_TSHARK_COMMAND`.

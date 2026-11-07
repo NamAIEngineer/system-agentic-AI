@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -52,11 +53,15 @@ def main() -> int:
         if is_forbidden:
             label = "tracked-artifact" if rel in tracked or any(parent in tracked for parent in rel.parents) else "forbidden-artifact"
             failures.append(f"{label}:{rel}")
-    for script in ["scripts/setup.sh", "scripts/doctor.sh", "scripts/smoke-test.sh", "scripts/setup-agent-desktop.sh"]:
-        if shutil.which("bash") and (ROOT / script).is_file():
-            check = subprocess.run(["bash", "-n", script], cwd=ROOT, capture_output=True, text=True)
-            if check.returncode:
-                failures.append(f"shell:{script}")
+    # Windows CI has no stable POSIX path contract for invoking Git Bash from
+    # Python. Unix runners validate shell syntax; Windows validates the native
+    # PowerShell/setup paths separately.
+    if os.name != "nt":
+        for script in ["scripts/setup.sh", "scripts/doctor.sh", "scripts/smoke-test.sh", "scripts/setup-agent-desktop.sh"]:
+            if shutil.which("bash") and (ROOT / script).is_file():
+                check = subprocess.run(["bash", "-n", script], cwd=ROOT, capture_output=True, text=True)
+                if check.returncode:
+                    failures.append(f"shell:{script}")
     if failures:
         print("SMOKE_FAIL")
         for item in failures:

@@ -54,7 +54,7 @@ def main() -> int:
             failures.append(f"{label}:{rel}")
     for script in ["scripts/setup.sh", "scripts/doctor.sh", "scripts/smoke-test.sh", "scripts/setup-agent-desktop.sh"]:
         if shutil.which("bash") and (ROOT / script).is_file():
-            check = subprocess.run(["bash", "-n", str(ROOT / script)], capture_output=True, text=True)
+            check = subprocess.run(["bash", "-n", script], cwd=ROOT, capture_output=True, text=True)
             if check.returncode:
                 failures.append(f"shell:{script}")
     if failures:

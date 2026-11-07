@@ -26,3 +26,5 @@ jobs:
         run: python scripts/smoke_test.py
       - name: Reference manifest check only
         run: python scripts/install-references.py --check-only
+      - name: Bootstrap contract tests
+        run: python -m unittest scripts.test_bootstrap

@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,7 +26,10 @@ def parser() -> argparse.ArgumentParser:
     mode.add_argument("--check-only", action="store_true", help="read-only prerequisite and layout check")
     mode.add_argument("--install", action="store_true", help="create local ignored config/state")
     p.add_argument("--skip-references", action="store_true", help="do not install optional references")
-    p.add_argument("--references", action="store_true", help="opt in to reference installer after local setup")
+    p.add_argument("--references", action="store_true", help="opt in to install all seven references after local setup")
+    p.add_argument("--quyet", action="store_true", help="opt in to Quyet dependency/model setup")
+    p.add_argument("--allow-network", action="store_true", help="approve public downloads for selected optional setup")
+    p.add_argument("--allow-model-download", action="store_true", help="approve Quyet model download")
     p.add_argument("--json", action="store_true", help="emit one JSON result")
     return p
 
@@ -85,25 +89,48 @@ def install_local() -> list[str]:
     return ["Created ignored local .env and .system-agentic-local/setup-state.json"]
 
 
+def run_child(script: str, args: list[str]) -> tuple[int, str]:
+    completed = subprocess.run([sys.executable, str(ROOT / "scripts" / script), *args], cwd=ROOT, text=True, capture_output=True, check=False)
+    output = (completed.stdout + completed.stderr).strip()
+    return completed.returncode, output
+
+
 def main() -> int:
     args = parser().parse_args()
     if not args.check_only and not args.install:
         args.check_only = True
     report = check()
+    child_failures: list[str] = []
     if args.install:
         if report["status"] == "BLOCKED":
             report["messages"].append("Install refused because core prerequisites/layout are blocked")
         else:
             report["messages"].extend(install_local())
             if args.references and not args.skip_references:
-                report["messages"].append("Reference installation is explicit; run scripts/install-references.py --install --allow-network")
+                if not args.allow_network:
+                    report["messages"].append("Reference installation requires approval: rerun with --references --allow-network")
+                    child_failures.append("references:approval-required")
+                else:
+                    code, output = run_child("install-references.py", ["--install", "--all", "--allow-network"])
+                    report["messages"].append(output or "Reference installer returned no output")
+                    if code:
+                        child_failures.append("references:install-failed")
+            if args.quyet:
+                if not args.allow_network or not args.allow_model_download:
+                    report["messages"].append("Quyet installation requires --quyet --allow-network --allow-model-download")
+                    child_failures.append("quyet:approval-required")
+                else:
+                    code, output = run_child("setup-quyet.py", ["--install", "--allow-network", "--allow-model-download"])
+                    report["messages"].append(output or "Quyet installer returned no output")
+                    if code:
+                        child_failures.append("quyet:install-failed")
     if args.json:
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     else:
         print(f"SETUP_{report['status']}")
         for item in report["messages"]:
             print(f"- {item}")
-    return 1 if report["status"] == "BLOCKED" else 0
+    return 1 if report["status"] == "BLOCKED" or child_failures else 0
 
 
 if __name__ == "__main__":

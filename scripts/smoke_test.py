@@ -16,7 +16,7 @@ def main() -> int:
     failures: list[str] = []
     if sys.version_info < (3, 10):
         failures.append("Python 3.10+ required")
-    required = ["AGENTS.md", "CLAUDE.md", "README.md", "WORKFLOW.md", "LICENSE", "VERSION", "THIRD_PARTY_NOTICES.md", "sources.manifest.json", "scripts/setup.py", "scripts/doctor.py", "scripts/install-references.py", "packages/agent-core/package.json"]
+    required = ["AGENTS.md", "CLAUDE.md", "README.md", "WORKFLOW.md", "LICENSE", "VERSION", "THIRD_PARTY_NOTICES.md", "sources.manifest.json", "scripts/setup.py", "scripts/doctor.py", "scripts/install-references.py", "scripts/setup-quyet.py", "packages/agent-core/package.json"]
     failures.extend(f"missing:{p}" for p in required if not (ROOT / p).is_file())
     for rel in ["sources.manifest.json", "agent-brain/providers/registry.json", "agent-brain/modules/registry.json"]:
         try:

@@ -31,6 +31,17 @@ Then open the cloned folder in ORCA or another compatible AI coding host and
 ask the host to read `AGENTS.md`, `README.md`, `WORKFLOW.md`, and
 `agent-brain/operating-contract.md` before initializing the workspace.
 
+In ORCA, use this single first-run instruction:
+
+```text
+Read AGENTS.md and fully initialize this System-Agentic-AI workspace.
+```
+
+ORCA auto-loading is host-specific and remains `UNVERIFIED` without host
+evidence. This sentence is the supported fallback. The host must show approval
+plans before network/model downloads, dependency execution, or writes outside
+the checkout.
+
 `setup.py` and `doctor.py` do not install global software, modify shell profiles,
 change credentials, start services, or require ORCA/9router. The default setup
 path is local and offline. Reference repositories are optional and require an
@@ -38,11 +49,30 @@ explicit command:
 
 ```sh
 python3 scripts/install-references.py --check-only
-python3 scripts/install-references.py --install --id system-one --allow-network
+python3 scripts/install-references.py --install --all --allow-network
 ```
 
 Use `--skip-references` in CI. Never point the installer at an existing dirty
 checkout owned by another project.
+
+The installer keeps the seven references outside Git and emits independent
+counts for source cloning, pinned revision verification, capability
+registration, and actual execution verification. A cloned or pinned reference
+is not automatically execution-ready. `NOASSERTION_REVIEW` entries require
+license/ownership review before running their code.
+
+Quyet Tiny is an optional local advisory classifier:
+
+```sh
+python3 scripts/setup-quyet.py --check-only --json
+python3 scripts/setup-quyet.py --verify --json
+python3 scripts/setup-quyet.py --install --allow-network --allow-model-download
+```
+
+The install command requires separate approval for public downloads and model
+weights. Weights remain in user cache, outside Git. Quyet output never grants
+execution permission; unavailable or low-confidence results fall back to host
+reasoning.
 
 ## What the framework provides
 
@@ -69,6 +99,11 @@ Run:
 python3 scripts/system-agentic providers
 python3 scripts/doctor.py --json
 ```
+
+Doctor reports `core_status`, `references_status`, `quyet_status`, per-provider
+optional status, and `host_execution_status`. Missing optional providers do not
+downgrade a healthy core. A real host task is required before claiming
+execution readiness.
 
 `agent-desktop` is optional and never bundled as a binary:
 

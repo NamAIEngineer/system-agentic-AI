@@ -1,0 +1,12 @@
+{
+  "source_commit": "7b7168add7bdcad9dc09a99a4d7386d4c705c89e",
+  "command": "python3 scripts/system-agentic providers",
+  "providers": [
+    {"provider_id": "codex", "available": true, "healthy": true, "authentication_state": "authenticated"},
+    {"provider_id": "local-qwen", "available": true, "healthy": true, "authentication_state": "not_required"},
+    {"provider_id": "rea", "available": false, "healthy": false, "authentication_state": "not_required"},
+    {"provider_id": "claude", "available": false, "healthy": null, "authentication_state": "unknown"},
+    {"provider_id": "gemini", "available": false, "healthy": null, "authentication_state": "not_checked"}
+  ],
+  "runtime": {"queue_worker_loaded": true}
+}

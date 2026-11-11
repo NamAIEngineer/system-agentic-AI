@@ -5,6 +5,12 @@ bounded runtime, provider discovery, host skills, cross-platform bootstrap, and
 verification. It is a repository framework, not a GUI, SaaS product, dashboard,
 model bundle, account manager, or 9router distribution.
 
+## Introduction film
+
+Watch the [54-second English introduction](https://github.com/NamAIEngineer/system-agentic-AI/releases/download/intro-video-2026-11-11/system-agentic-intro-1080p.mp4) or the lightweight [GIF preview](media/assets/system-agentic-intro-preview.gif). The film walks through a safe provider-readiness prompt, the decision-plane result, live provider inventory, `READ_ONLY` boundaries, and a verification receipt.
+
+The composition is reproducible from [`media/`](media/), with [captions](media/system-agentic-intro.vtt), a [transcript](media/transcript.md), and sanitized [evidence readbacks](media/evidence/). JSON values come from a local run pinned to public commit `7b7168a`; the advisory result did not authorize or submit a task. Connector geometry and policy panels are labeled illustrative in the film. No credentials, account data, or external writes are included.
+
 ## First run
 
 macOS, Linux, or Windows with Python 3.10+ and Git:

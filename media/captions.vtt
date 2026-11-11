@@ -1,0 +1,22 @@
+WEBVTT
+
+00:00.000 --> 00:05.000
+Make the boundary visible.
+
+00:05.000 --> 00:13.000
+Start with a safe prompt. Inspect provider readiness. Report the safe result.
+
+00:13.000 --> 00:22.000
+Route first. Execute second. The decision plane is advisory; execution stays host-owned.
+
+00:22.000 --> 00:32.000
+Know what can run. Provider identity, health, and readiness stay separate.
+
+00:32.000 --> 00:42.000
+Bound the blast radius. Read-only policy, local data flow, external writes disabled.
+
+00:42.000 --> 00:50.000
+Leave a receipt. Facts, source pins, and unknowns remain visible.
+
+00:50.000 --> 00:54.000
+System Agentic AI — provider-neutral execution with evidence.

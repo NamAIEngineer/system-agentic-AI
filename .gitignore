@@ -115,3 +115,6 @@ __pycache__/
 plans/
 artifacts/
 Library/
+# Generated video render output and local dependencies
+media/out/
+media/node_modules/

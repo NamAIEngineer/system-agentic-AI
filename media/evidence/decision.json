@@ -1,0 +1,78 @@
+{
+  "decision_id": "ce33ab35-1332-405c-a9a1-4985bb55bc07",
+  "decision_type": "task_routing",
+  "advisory": true,
+  "execution_authorized": false,
+  "engines": [
+    {
+      "engine": "quyet-tiny",
+      "status": "ok",
+      "model": "Quyet-1.0-Tiny",
+      "inference": {
+        "device": "mps",
+        "preferred_device": "mps",
+        "fallback_reason": null,
+        "valid": true
+      },
+      "choices": {
+        "execution_class": "READ_ONLY",
+        "route": "DISPATCH"
+      },
+      "confidence": {
+        "execution_class": 0.855,
+        "route": 0.8357
+      },
+      "reasons": {}
+    }
+  ],
+  "choices": {
+    "route": "DISPATCH",
+    "module": "none",
+    "execution_class": "READ_ONLY"
+  },
+  "confidence": {
+    "route": 0.8357,
+    "module": 1.0,
+    "execution_class": 0.855
+  },
+  "field_sources": {
+    "route": "quyet-tiny",
+    "module": "registry-prefilter",
+    "execution_class": "quyet-tiny"
+  },
+  "thresholds": {
+    "quyet_tiny": {
+      "route": 0.65,
+      "module": 0.8,
+      "execution_class": 0.8
+    },
+    "typesafe_jev": {
+      "route": 0.65,
+      "module": 0.65,
+      "execution_class": 0.65
+    }
+  },
+  "escalation_reason": {},
+  "fallback": null,
+  "final_source": "mixed",
+  "capability": null,
+  "provider": null,
+  "route_reason": null,
+  "route_lane": "HOST",
+  "module_prefilter": {
+    "task_type": "unmatched",
+    "status": "no_specialized_candidate",
+    "options": [
+      "none"
+    ]
+  },
+  "execution_class_prefilter": {
+    "options": [
+      "READ_ONLY",
+      "WORKSPACE_WRITE"
+    ],
+    "elevated_signal": null
+  },
+  "host_reasoning_required": [],
+  "latency_ms": 1107.28
+}

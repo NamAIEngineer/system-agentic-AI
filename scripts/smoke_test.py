@@ -24,6 +24,8 @@ def main() -> int:
         except Exception as exc:
             failures.append(f"invalid-json:{rel}:{type(exc).__name__}")
     for p in ROOT.rglob("*.py"):
+        if ".system-agentic-local" in p.relative_to(ROOT).parts:
+            continue  # Optional installed references are not framework source.
         try:
             compile(p.read_text(encoding="utf-8"), str(p), "exec")
         except Exception as exc:
@@ -41,6 +43,10 @@ def main() -> int:
     forbidden_suffixes = {".pyc", ".pyo", ".sqlite", ".sqlite3", ".db", ".log"}
     for p in ROOT.rglob("*"):
         rel = p.relative_to(ROOT)
+        if ".system-agentic-local" in rel.parts:
+            if rel in tracked:
+                failures.append(f"tracked-local-state:{rel}")
+            continue  # Private optional installs are allowed locally, never in Git.
         if p.is_symlink():
             try:
                 p.resolve().relative_to(ROOT)

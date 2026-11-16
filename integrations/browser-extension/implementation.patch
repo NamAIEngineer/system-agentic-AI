@@ -1,0 +1,733 @@
+diff --git a/package.json b/package.json
+new file mode 100644
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,13 @@
++{
++  "name": "design-os-browser-extension",
++  "version": "0.1.0",
++  "private": true,
++  "type": "module",
++  "scripts": {
++    "test": "node --test tests/*.test.mjs",
++    "pretest": "node scripts/build.mjs"
++  },
++  "dependencies": {
++    "ws": "8.21.3"
++  }
++}
+diff --git a/package-lock.json b/package-lock.json
+new file mode 100644
+--- /dev/null
++++ b/package-lock.json
+@@ -0,0 +1,36 @@
++{
++  "name": "design-os-browser-extension",
++  "version": "0.1.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "design-os-browser-extension",
++      "version": "0.1.0",
++      "dependencies": {
++        "ws": "8.21.3"
++      }
++    },
++    "node_modules/ws": {
++      "version": "8.21.3",
++      "resolved": "https://registry.npmjs.org/ws/-/ws-8.21.3.tgz",
++      "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=10.0.0"
++      },
++      "peerDependencies": {
++        "bufferutil": "^4.0.1",
++        "utf-8-validate": ">=5.0.2"
++      },
++      "peerDependenciesMeta": {
++        "bufferutil": {
++          "optional": true
++        },
++        "utf-8-validate": {
++          "optional": true
++        }
++      }
++    }
++  }
++}
+diff --git a/cli/bridge.mjs b/cli/bridge.mjs
+new file mode 100644
+--- /dev/null
++++ b/cli/bridge.mjs
+@@ -0,0 +1,126 @@
++import http from 'node:http';
++import fs from 'node:fs';
++import path from 'node:path';
++import {randomBytes, timingSafeEqual, createHash} from 'node:crypto';
++import {WebSocketServer} from 'ws';
++import {validate} from '../shared/protocol.mjs';
++
++// Local controller and extension tokens are distinct. Nothing is sent off-machine.
++export async function startBridge({directory, extensionId, port = 0, timeout = 15000}) {
++  if (!/^[a-p]{32}$/.test(extensionId)) throw Error('extensionId required');
++  fs.mkdirSync(directory, {recursive:true, mode:0o700});
++  fs.chmodSync(directory, 0o700);
++  const lockFile=path.join(directory,'bridge.lock');
++  const lock=fs.openSync(lockFile,'wx',0o600);
++  fs.writeFileSync(lock,String(process.pid)); fs.closeSync(lock);
++  const token = () => randomBytes(32).toString('hex');
++  const config = {controllerToken:token(), extensionToken:token(), extensionId};
++  const receiptFile = path.join(directory, 'receipts.json');
++  let receipts = fs.existsSync(receiptFile) ? JSON.parse(fs.readFileSync(receiptFile)) : {};
++  for (const receipt of Object.values(receipts))
++    if (receipt.result?.status === 'PENDING') receipt.result = {status:'UNCERTAIN', error:'BRIDGE_RESTARTED'};
++  const persist = () => {
++    const temporary = receiptFile + '.tmp';
++    fs.writeFileSync(temporary, JSON.stringify(receipts), {mode:0o600});
++    fs.renameSync(temporary, receiptFile);
++  };
++  persist();
++  const same = (a,b) => {
++    if(typeof a !== 'string') return false;
++    const left=Buffer.from(a),right=Buffer.from(b);
++    return left.length===right.length && timingSafeEqual(left,right);
++  };
++  let extension = null;
++  const pending = new Map();
++  const answer = (response, status, body) => {
++    response.writeHead(status, {'Content-Type':'application/json', 'Cache-Control':'no-store'});
++    response.end(JSON.stringify(body));
++  };
++  const server = http.createServer(async (request, response) => {
++    if (request.headers.origin || !/^127\.0\.0\.1:\d+$/.test(request.headers.host || '') ||
++        !same(request.headers.authorization, `Bearer ${config.controllerToken}`))
++      return answer(response,403,{error:'FORBIDDEN'});
++    if (request.method === 'GET' && request.url === '/health')
++      return answer(response,200,{status:extension ? 'PAIRED' : 'NOT_PAIRED'});
++    if (request.method === 'GET' && /^\/receipts\/[a-zA-Z0-9_-]{1,100}$/.test(request.url || '')) {
++      const id=request.url.split('/').pop();
++      return answer(response,200,Object.hasOwn(receipts,id) ? receipts[id].result : {status:'NOT_FOUND'});
++    }
++    if (request.method !== 'POST' || request.url !== '/rpc') return answer(response,404,{error:'NOT_FOUND'});
++    try {
++      let data = '';
++      for await (const chunk of request) {
++        data += chunk;
++        if (Buffer.byteLength(data)>20000) throw Error('REQUEST_TOO_LARGE');
++      }
++      const rpc = validate(JSON.parse(data));
++      const digest = createHash('sha256').update(JSON.stringify(rpc)).digest('hex');
++      if (receipts[rpc.id]) {
++        if (receipts[rpc.id].digest !== digest) throw Error('REQUEST_ID_CONFLICT');
++        return answer(response,200,receipts[rpc.id].result);
++      }
++      if (!extension) return answer(response,409,{status:'FAILED',error:'NOT_PAIRED'});
++      // Bound session journal. Never evict uncertainty and thereby permit a replay.
++      if (Object.keys(receipts).length >= 5000) throw Error('SESSION_CAPACITY_REACHED');
++      receipts[rpc.id] = {digest, result:{status:'PENDING'}};
++      persist();
++      const finish = result => {
++        if (!pending.has(rpc.id)) return;
++        clearTimeout(pending.get(rpc.id).timer);
++        pending.delete(rpc.id);
++        receipts[rpc.id].result = result;
++        persist();
++        answer(response,200,result);
++      };
++      const timer = setTimeout(() => finish({status:'UNCERTAIN',error:'TIMEOUT',id:rpc.id}),timeout);
++      pending.set(rpc.id,{timer,finish});
++      extension.send(JSON.stringify({...rpc, deadline:Date.now()+timeout-100}));
++    } catch (error) { answer(response,400,{status:'FAILED',error:error.message}); }
++  });
++  server.requestTimeout = 5000;
++  server.headersTimeout = 5000;
++  const wss = new WebSocketServer({noServer:true,maxPayload:256000});
++  server.on('upgrade', (request,socket,head) => {
++    if (request.url !== '/extension' || request.headers.origin !== `chrome-extension://${extensionId}` ||
++        !/^127\.0\.0\.1:\d+$/.test(request.headers.host || '')) return socket.destroy();
++    wss.handleUpgrade(request,socket,head,ws => {
++      const authTimer = setTimeout(()=>ws.close(1008),2000);
++      let authenticated = false;
++      ws.on('message', buffer => {
++        try {
++          const message = JSON.parse(buffer.toString());
++          if (!authenticated) {
++            if (!same(message.token,config.extensionToken) || extension) return ws.close(1008);
++            authenticated = true; extension = ws; clearTimeout(authTimer);
++            ws.send(JSON.stringify({type:'ready'})); return;
++          }
++          if (message.type === 'heartbeat') return ws.send(JSON.stringify({type:'heartbeat'}));
++          if (typeof message.id === 'string') pending.get(message.id)?.finish(message);
++        } catch { ws.close(1008); }
++      });
++      ws.on('close',()=> {
++        clearTimeout(authTimer);
++        if (extension === ws) {
++          extension = null;
++          for (const [id,item] of pending) item.finish({id,status:'UNCERTAIN',error:'EXTENSION_DISCONNECTED'});
++        }
++      });
++      ws.on('error',()=>{});
++    });
++  });
++  await new Promise(resolve => server.listen(port,'127.0.0.1',resolve));
++  config.port = server.address().port;
++  fs.writeFileSync(path.join(directory,'connection.json'),JSON.stringify(config),{mode:0o600});
++  return {config, close:async()=> {
++    for (const client of wss.clients) client.terminate();
++    await new Promise(resolve=>server.close(resolve)); wss.close();
++    fs.unlinkSync(lockFile);
++  }};
++}
++if (process.argv[1] === new URL(import.meta.url).pathname) {
++  const [directory,extensionId] = process.argv.slice(2);
++  if (!directory) throw Error('usage: node cli/bridge.mjs PRIVATE_SESSION_DIRECTORY EXTENSION_ID');
++  const bridge = await startBridge({directory,extensionId});
++  for(const signal of ['SIGTERM','SIGINT']) process.once(signal,async()=>{await bridge.close();process.exit(0);});
++  console.log(JSON.stringify({status:'LISTENING',port:bridge.config.port,connectionFile:path.join(directory,'connection.json')}));
++}
+diff --git a/extension/background.mjs b/extension/background.mjs
+new file mode 100644
+--- /dev/null
++++ b/extension/background.mjs
+@@ -0,0 +1,113 @@
++import {validate, capabilities} from './shared/protocol.mjs';
++import {command,pageIdentity,snapshot,act} from './cdp.mjs';
++let socket, connectionKey;
++let queue = Promise.resolve();
++const serialized = fn => { const result=queue.then(fn); queue=result.catch(()=>{}); return result; };
++const state = async () => (await chrome.storage.session.get('pair')).pair;
++async function invalidate(tabId) {
++  const pair=await state();
++  if (pair?.tabId === tabId) await chrome.storage.session.set({pair:{...pair,epoch:pair.epoch+1,refs:{}}});
++}
++// Mark navigation synchronously, before the serialized persistence work. A
++// navigation occurring during an in-flight command must fence that command too.
++const invalidating=new Map();
++function navigation(tabId) {
++  const marker=Symbol(); invalidating.set(tabId,marker);
++  serialized(async()=> {
++    await invalidate(tabId);
++    if(invalidating.get(tabId)===marker) invalidating.delete(tabId);
++  });
++}
++chrome.webNavigation.onCommitted.addListener(e=> { if(e.frameId===0) navigation(e.tabId); });
++chrome.webNavigation.onHistoryStateUpdated.addListener(e=> { if(e.frameId===0) navigation(e.tabId); });
++chrome.debugger.onDetach.addListener(({tabId})=>navigation(tabId));
++async function fresh(pair,request) {
++  if(invalidating.has(pair.tabId)) throw Error('STALE_FENCE');
++  const current=await state();
++  if(request && Date.now()>=request.deadline) throw Error('BLOCKED_POLICY_EXPIRED');
++  const identity=await pageIdentity(pair.tabId);
++  if (!current || current.lease!==pair.lease || new URL(identity.url).origin!==pair.origin) throw Error('BLOCKED_POLICY');
++  if (request && (request.lease!==current.lease || request.epoch!==current.epoch || request.pageId!==identity.pageId)) throw Error('STALE_FENCE');
++  return identity;
++}
++async function execute(rpc) {
++  validate(rpc);
++  if(!Number.isFinite(rpc.deadline) || Date.now()>=rpc.deadline) throw Error('BLOCKED_POLICY_EXPIRED');
++  if(rpc.op==='capabilities') return {status:'COMPLETED',capabilities,paired:Boolean(await state())};
++  const pair=await state();
++  if(!pair) throw Error('NOT_PAIRED');
++  if(rpc.op==='handoff') {
++    await chrome.storage.session.remove('pair');
++    try {await chrome.debugger.detach({tabId:pair.tabId});} catch {}
++    return {status:'COMPLETED',handoff:true};
++  }
++  const identity=await fresh(pair,rpc.op==='act' ? rpc : null);
++  if(rpc.op==='act') {
++    const ref=pair.refs[rpc.ref];
++    if(!ref || pair.pageId!==identity.pageId) throw Error('STALE_REF');
++    return act(pair.tabId,rpc,ref,()=>fresh(pair,rpc));
++  }
++  const observed=await snapshot(pair.tabId);
++  const after=await fresh(pair);
++  if(after.pageId!==identity.pageId) throw Error('STALE_FENCE');
++  await chrome.storage.session.set({pair:{...pair,...identity,refs:observed.refs}});
++  const {refs,...data}=observed;
++  const host=new URL(identity.url).hostname;
++  return {status:'COMPLETED',...identity,...data,lease:pair.lease,epoch:pair.epoch,
++    profile:host==='github.com' ? 'github' : /(^|\.)notion\.(so|site|com)$/.test(host) ? 'notion' : 'generic'};
++}
++async function handle(rpc) {
++  const {journal={}}=await chrome.storage.session.get('journal');
++  const digest=JSON.stringify(rpc);
++  if(journal[rpc.id]) return journal[rpc.id].digest===digest ? journal[rpc.id].result : {status:'FAILED',error:'REQUEST_ID_CONFLICT'};
++  if(Object.keys(journal).length>=5000) return {status:'FAILED',error:'SESSION_CAPACITY_REACHED'};
++  journal[rpc.id]={digest,result:{id:rpc.id,status:'UNCERTAIN',error:'INTERRUPTED'}};
++  await chrome.storage.session.set({journal});
++  let result;
++  try {result={id:rpc.id,...await execute(rpc)};}
++  catch(error) {result={id:rpc.id,status:rpc.op==='act' && !/^(STALE_|BLOCKED_|UNSUPPORTED|OCCLUDED|INVALID|NOT_PAIRED)/.test(error.message) ? 'UNCERTAIN' : 'FAILED',error:error.message};}
++  journal[rpc.id].result=result;
++  await chrome.storage.session.set({journal});
++  return result;
++}
++function connect(config) {
++  const key=`${config.port}:${config.token}`;
++  if(socket?.readyState===1 && connectionKey===key) return;
++  if(socket) socket.close();
++  connectionKey=key;
++  socket=new WebSocket(`ws://127.0.0.1:${config.port}/extension`);
++  const own=socket;
++  own.onopen=()=>own.send(JSON.stringify({token:config.token}));
++  own.onmessage=e=> {
++    const message=JSON.parse(e.data);
++    if(message.type) return;
++    serialized(()=>handle(message)).then(result=> {if(own.readyState===1) own.send(JSON.stringify(result));});
++  };
++  const heartbeat=setInterval(()=> {if(own.readyState===1) own.send(JSON.stringify({type:'heartbeat'}));},20000);
++  own.onclose=()=>clearInterval(heartbeat);
++}
++chrome.runtime.onMessage.addListener((message,sender,reply)=> {
++  if(sender.id!==chrome.runtime.id || sender.url!==chrome.runtime.getURL('pair.html')) return;
++  if(message.type==='pair') {
++    serialized(async()=> {
++      if(!Number.isInteger(message.port) || message.port<1 || message.port>65535 || !/^[a-f0-9]{64}$/.test(message.token)) throw Error('INVALID_PAIRING');
++      const tab=await chrome.tabs.get(Number(message.tabId));
++      const url=new URL(tab.url);
++      if(!['http:','https:'].includes(url.protocol)) throw Error('BLOCKED_POLICY');
++      const previous=await state();
++      if(previous) {try{await chrome.debugger.detach({tabId:previous.tabId});}catch{}}
++      await chrome.debugger.attach({tabId:tab.id},'1.3');
++      await command(tab.id,'Page.enable');
++      const identity=await pageIdentity(tab.id);
++      if(new URL(identity.url).origin!==url.origin) throw Error('STALE_FENCE');
++      await chrome.storage.session.set({pair:{tabId:tab.id,origin:url.origin,lease:crypto.randomUUID(),epoch:(previous?.epoch || 0)+1,...identity,refs:{}}});
++      connect(message);
++      return {status:'PAIRED',origin:url.origin};
++    }).then(reply,error=>reply({status:'FAILED',error:error.message}));
++    return true;
++  }
++  if(message.type==='revoke') {
++    serialized(()=>execute({version:1,id:crypto.randomUUID(),op:'handoff'})).then(reply,error=>reply({status:'FAILED',error:error.message}));
++    return true;
++  }
++});
+diff --git a/extension/cdp.mjs b/extension/cdp.mjs
+new file mode 100644
+--- /dev/null
++++ b/extension/cdp.mjs
+@@ -0,0 +1,74 @@
++export const command = (tabId,method,params={}) => chrome.debugger.sendCommand({tabId},method,params);
++export async function pageIdentity(tabId) {
++  const {frameTree} = await command(tabId,'Page.getFrameTree');
++  const frame = frameTree.frame;
++  return {pageId:`${frame.id}:${frame.loaderId}:${frame.url}`,url:frame.url,frameId:frame.id};
++}
++export async function tree(tabId) {
++  const {nodes} = await command(tabId,'Accessibility.getFullAXTree');
++  const visible = nodes.filter(n=>!n.ignored);
++  const headings = visible.filter(n=>['heading','RootWebArea'].includes(n.role?.value)).map(n=>n.name?.value || '').join('\n');
++  if (/captcha|verify (you are|your identity)|checking your browser|security challenge/i.test(headings)) throw Error('BLOCKED_CHALLENGE');
++  if (/sign in to continue|log in to continue|two.factor|verification code/i.test(headings) ||
++      visible.some(n=>n.properties?.some(p=>p.name === 'protected' && p.value?.value))) throw Error('BLOCKED_AUTH');
++  if (/checkout|payment required|complete your purchase|subscribe to continue/i.test(headings)) throw Error('BLOCKED_PAYMENT');
++  return visible;
++}
++const editable = n => n.properties?.some(p=>p.name==='editable' && ['plain','richtext',true].includes(p.value?.value));
++const roles = new Set(['button','link','textbox','checkbox','combobox','menuitem','tab','searchbox']);
++export async function snapshot(tabId) {
++  const nodes = await tree(tabId);
++  const refs = {};
++  const candidates = nodes.filter(n=>(roles.has(n.role?.value) || editable(n)) && n.backendDOMNodeId);
++  const elements = candidates.slice(0,200).map((n,index)=> {
++    const ref = crypto.randomUUID();
++    refs[ref] = {backendNodeId:n.backendDOMNodeId,role:n.role.value,name:n.name?.value || '',editable:Boolean(editable(n))};
++    return {ref,role:editable(n) ? 'textbox' : n.role.value,name:(n.name?.value || `Editable block ${index+1}`).slice(0,200),disabled:n.properties?.some(p=>p.name==='disabled' && p.value?.value) || false};
++  });
++  const text=nodes.filter(n=>['heading','StaticText'].includes(n.role?.value)).map(n=>n.name?.value || '').join('\n');
++  return {refs,elements,text:text.slice(0,12000),truncated:{elements:candidates.length>200,text:text.length>12000},title:nodes.find(n=>n.role?.value==='RootWebArea')?.name?.value || ''};
++}
++export async function act(tabId,request,ref,check) {
++  const nodes = await tree(tabId);
++  const current = nodes.find(n=>n.backendDOMNodeId===ref.backendNodeId);
++  if (!current || current.role?.value !== ref.role || (current.name?.value || '') !== ref.name) throw Error('STALE_REF');
++  if (current.properties?.some(p=>['disabled','readonly'].includes(p.name) && p.value?.value)) throw Error('BLOCKED_POLICY');
++  const {node} = await command(tabId,'DOM.describeNode',{backendNodeId:ref.backendNodeId});
++  const attrs = Object.fromEntries(Array.from({length:(node.attributes?.length || 0)/2},(_,i)=>node.attributes.slice(i*2,i*2+2)));
++  if (/^(sign in|log in|login|verify|pay|purchase|checkout|subscribe)(\b|$)/i.test(ref.name)) throw Error('BLOCKED_POLICY');
++  if (attrs.type === 'password') throw Error('BLOCKED_AUTH');
++  if (attrs.type === 'file') throw Error('BLOCKED_POLICY');
++  // Fixed native commands only; no controller-supplied script or DOM-click fallback.
++  if (request.action === 'fill') {
++    if (!['textbox','searchbox'].includes(ref.role) && !ref.editable) throw Error('UNSUPPORTED');
++    await command(tabId,'DOM.focus',{backendNodeId:ref.backendNodeId});
++    await check();
++    await command(tabId,'Input.dispatchKeyEvent',{type:'keyDown',key:'a',code:'KeyA',modifiers: navigator.platform.includes('Mac') ? 4 : 2,commands:['selectAll']});
++    await command(tabId,'Input.dispatchKeyEvent',{type:'keyUp',key:'a',code:'KeyA'});
++    await check();
++    await command(tabId,'Input.insertText',{text:request.text});
++  } else {
++    await command(tabId,'DOM.scrollIntoViewIfNeeded',{backendNodeId:ref.backendNodeId});
++    const {model} = await command(tabId,'DOM.getBoxModel',{backendNodeId:ref.backendNodeId});
++    const x=(model.content[0]+model.content[4])/2, y=(model.content[1]+model.content[5])/2;
++    const hit = await command(tabId,'DOM.getNodeForLocation',{x:Math.round(x),y:Math.round(y),includeUserAgentShadowDOM:true});
++    if (hit.backendNodeId !== ref.backendNodeId) {
++      const target = await command(tabId,'DOM.resolveNode',{backendNodeId:ref.backendNodeId});
++      const located = await command(tabId,'DOM.resolveNode',{backendNodeId:hit.backendNodeId});
++      try {
++        const result = await command(tabId,'Runtime.callFunctionOn',{
++          objectId:target.object.objectId,
++          functionDeclaration:'function(hit){for(let i=0;hit&&i<100;i++){if(hit===this)return true;hit=hit.parentNode||hit.host;}return false;}',
++          arguments:[{objectId:located.object.objectId}],returnByValue:true});
++        if(result.result.value!==true) throw Error('OCCLUDED_TARGET');
++      } finally {
++        await command(tabId,'Runtime.releaseObject',{objectId:target.object.objectId});
++        await command(tabId,'Runtime.releaseObject',{objectId:located.object.objectId});
++      }
++    }
++    await check();
++    await command(tabId,'Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',clickCount:1});
++    await command(tabId,'Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1});
++  }
++  return {status:'COMPLETED',action:request.action};
++}
+diff --git a/extension/manifest.json b/extension/manifest.json
+new file mode 100644
+--- /dev/null
++++ b/extension/manifest.json
+@@ -0,0 +1,24 @@
++{
++  "manifest_version": 3,
++  "name": "System Agentic AI Browser Bridge",
++  "version": "0.1.0",
++  "minimum_chrome_version": "125",
++  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvgEI+fJ0AbfLfEcH2SQZRIxx7oQ84TqYKFyxqUOVIRBH2n3l6Abo4Tsb8k50ctYzAjf9l4TbbHaMO5V/iKWYMn1/NPbV1yWggl+GJzEnpbH85NnWWg4ChtERiFLxYoh9jEGVVJXAuRjr1R75lnMLz3lSwi3BZ00U4xczIq7qW8mPSz4U35ljJUn7G6QwJ13L1gpyMjFwq8m4WTL60i95t9/p0XQn6f96z/ozlr5RzEdUJ5+1owzI+bHUOLZy6TmROUUfPm+PQruSeGbHgJVNWotq7pt61vmrmv/waBRZTSwIikNASxOXuvc9T7UxfssowPQbfp2NHPN+BnEVejs/pQIDAQAB",
++  "permissions": [
++    "debugger",
++    "storage",
++    "activeTab",
++    "tabs",
++    "webNavigation"
++  ],
++  "background": {
++    "service_worker": "background.mjs",
++    "type": "module"
++  },
++  "action": {
++    "default_popup": "pair.html"
++  },
++  "content_security_policy": {
++    "extension_pages": "script-src 'self'; object-src 'none'; connect-src ws://127.0.0.1:*"
++  }
++}
+diff --git a/extension/pair.html b/extension/pair.html
+new file mode 100644
+--- /dev/null
++++ b/extension/pair.html
+@@ -0,0 +1,6 @@
++<!doctype html><html lang="en"><meta charset="utf-8"><title>Pair System Agentic AI</title>
++<style>body{font:15px system-ui;width:360px;padding:16px}label{display:block;margin:12px 0}input,select,button{font:inherit;max-width:100%}input{width:100%}pre{white-space:pre-wrap}</style>
++<h1>Pair one tab</h1><p>This lets local agents read and control the chosen tab using trusted browser input. Pair only a tab you authorize. Login, security challenges and payments require you.</p>
++<label>Load local connection file<input id="connection" type="file" accept="application/json,.json"></label>
++<form id="pair"><label>Tab<select id="tab" required></select></label><label>Local bridge port<input id="port" type="number" min="1" max="65535" required></label><label>Extension pairing token<input id="token" type="password" autocomplete="off" required></label><button>Pair selected tab</button></form>
++<p><button id="revoke">Revoke tab access</button></p><pre id="result" aria-live="polite"></pre><script src="pair.mjs" type="module"></script></html>
+diff --git a/extension/pair.mjs b/extension/pair.mjs
+new file mode 100644
+--- /dev/null
++++ b/extension/pair.mjs
+@@ -0,0 +1,25 @@
++const element=id=>document.getElementById(id);
++for(const tab of await chrome.tabs.query({})) {
++  if(!/^https?:/.test(tab.url || '')) continue;
++  const option=document.createElement('option'); option.value=tab.id; option.textContent=`${tab.title} — ${new URL(tab.url).origin}`;
++  element('tab').append(option);
++}
++element('pair').onsubmit=async event=> {
++  event.preventDefault();
++  const result=await chrome.runtime.sendMessage({type:'pair',tabId:Number(element('tab').value),port:Number(element('port').value),token:element('token').value});
++  element('token').value=''; element('result').textContent=JSON.stringify(result);
++};
++element('revoke').onclick=async()=> {element('result').textContent=JSON.stringify(await chrome.runtime.sendMessage({type:'revoke'}));};
++
++element('connection').onchange=async event=> {
++  try {
++    const file=event.target.files[0];
++    if(!file || file.size>4096) throw Error('Invalid connection file');
++    const config=JSON.parse(await file.text());
++    if(config.extensionId!==chrome.runtime.id) throw Error('Connection belongs to another extension');
++    element('port').value=config.port;
++    element('token').value=config.extensionToken;
++    element('result').textContent='Connection loaded. Review the selected tab before pairing.';
++  } catch(error) {element('result').textContent=error.message;}
++  event.target.value='';
++};
+diff --git a/shared/protocol.mjs b/shared/protocol.mjs
+new file mode 100644
+--- /dev/null
++++ b/shared/protocol.mjs
+@@ -0,0 +1,18 @@
++export const operations = new Set(['capabilities', 'observe', 'read_state', 'act', 'handoff']);
++export function validate(request) {
++  if (!request || request.version !== 1 || !operations.has(request.op) ||
++      typeof request.id !== 'string' || ['__proto__','constructor','prototype'].includes(request.id) || !/^[a-zA-Z0-9_-]{1,100}$/.test(request.id))
++    throw new Error('INVALID_REQUEST');
++  if (request.op === 'act' && (!['click', 'fill'].includes(request.action) ||
++      typeof request.ref !== 'string' || typeof request.lease !== 'string' ||
++      typeof request.pageId !== 'string' || !Number.isSafeInteger(request.epoch) ||
++      (request.action === 'fill' && (typeof request.text !== 'string' || request.text.length > 10000))))
++    throw new Error('INVALID_ACTION');
++  return request;
++}
++export const capabilities = {
++  engine: 'chromium', tier: 1, operations: [...operations], actions: ['click', 'fill'],
++  profiles: ['github', 'notion', 'generic'], trustedInput: true,
++  crossOriginFrames: false, firefox: 'UNAVAILABLE', safari: 'UNAVAILABLE',
++  arbitraryEvaluation: false, modelProvider: null,
++};
+diff --git a/shared/extension-id.json b/shared/extension-id.json
+new file mode 100644
+--- /dev/null
++++ b/shared/extension-id.json
+@@ -0,0 +1 @@
++{"id":"iiijogkdcchkllecamaifaifnbejihob"}
+diff --git a/scripts/build.mjs b/scripts/build.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/build.mjs
+@@ -0,0 +1,5 @@
++import fs from 'node:fs';
++fs.mkdirSync('dist/shared',{recursive:true});
++fs.cpSync('extension','dist',{recursive:true});
++fs.copyFileSync('shared/protocol.mjs','dist/shared/protocol.mjs');
++console.log('Built unpacked Chromium extension in dist/');
+diff --git a/scripts/open-browser.mjs b/scripts/open-browser.mjs
+new file mode 100644
+--- /dev/null
++++ b/scripts/open-browser.mjs
+@@ -0,0 +1,37 @@
++// Dedicated local browser demonstration. Never imports a personal browser profile.
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import {createRequire} from 'node:module';
++const [workbench,connectionFile]=process.argv.slice(2);
++if(!workbench || !connectionFile) throw Error('usage: open-browser.mjs SYSTEM_AGENTIC_ROOT CONNECTION_FILE');
++const config=JSON.parse(fs.readFileSync(connectionFile));
++const root=path.resolve(new URL('..',import.meta.url).pathname);
++const require=createRequire(path.join(process.env.SYSTEM_AGENTIC_PLAYWRIGHT_PROJECT || path.join(workbench,'design-os-system-one/projects/voice-browser-agent'),'package.json'));
++const {chromium}=require('playwright');
++const profile=path.join(path.dirname(connectionFile),'../chromium-profile');
++fs.mkdirSync(profile,{recursive:true,mode:0o700});fs.chmodSync(profile,0o700);
++const context=await chromium.launchPersistentContext(profile,{headless:false,
++ executablePath:(process.env.CHROMIUM_EXECUTABLE_PATH || path.join(os.homedir(),'Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing')),
++ args:[`--disable-extensions-except=${root}/dist`,`--load-extension=${root}/dist`]});
++const pidFile=path.join(path.dirname(connectionFile),'browser.pid');
++fs.writeFileSync(pidFile,String(process.pid),{mode:0o600});
++const page=context.pages()[0] || await context.newPage();
++const target='https://github.com/jangtrinh/design-os-browser-extension';
++await page.goto(target,{waitUntil:'domcontentloaded',timeout:30000});
++const pair=await context.newPage();
++await pair.goto(`chrome-extension://${config.extensionId}/pair.html`);
++const options=await pair.locator('#tab option').evaluateAll(options=>options.map(o=>({value:o.value,label:o.textContent})));
++const selected=options.find(option=>option.label.includes('https://github.com'));
++if(selected) {
++ await pair.locator('#tab').selectOption(selected.value);
++ await pair.locator('#connection').setInputFiles(connectionFile);
++ await pair.waitForFunction(()=>document.getElementById('token').value.length===64);
++ await pair.getByRole('button',{name:'Pair selected tab',exact:true}).click();
++ await pair.locator('#result').filter({hasText:'PAIRED'}).waitFor();
++}
++await page.bringToFront();
++console.log(JSON.stringify({status:selected?'PAIRED':'USER_ACTION_REQUIRED',scope:'dedicated profile; public GitHub read demonstration',pid:process.pid,profile,pairedOrigin:selected?'https://github.com':null}));
++for(const signal of ['SIGINT','SIGTERM']) process.once(signal,()=>context.close());
++await context.waitForEvent('close',{timeout:0});
++if(fs.existsSync(pidFile) && fs.readFileSync(pidFile,'utf8')===String(process.pid)) fs.unlinkSync(pidFile);
+diff --git a/tests/bridge.test.mjs b/tests/bridge.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/bridge.test.mjs
+@@ -0,0 +1,40 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import WebSocket from 'ws';
++import {startBridge} from '../cli/bridge.mjs';
++const {id:extensionId}=JSON.parse(fs.readFileSync('shared/extension-id.json'));
++const wait=milliseconds=>new Promise(resolve=>setTimeout(resolve,milliseconds));
++test('trust boundary, timeout receipts, conflicts, restart and no replay',async()=> {
++  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'agent-rpc-test-'));
++  let bridge=await startBridge({directory,extensionId,timeout:250});
++  await assert.rejects(()=>startBridge({directory,extensionId}),/EEXIST/);
++  const url=()=>`http://127.0.0.1:${bridge.config.port}`;
++  const post=(body,headers={})=>fetch(url()+'/rpc',{method:'POST',headers:{Authorization:`Bearer ${bridge.config.controllerToken}`,...headers},body:JSON.stringify(body)});
++  try {
++    assert.equal((await fetch(url()+'/health')).status,403);
++    assert.equal((await post({},{Origin:'https://evil.example'})).status,403);
++    const denied=new WebSocket(url().replace('http:','ws:')+'/extension',{origin:'https://evil.example'});
++    const deniedResult=await new Promise(resolve=>{denied.on('error',()=>resolve('denied'));denied.on('open',()=>resolve('opened'));});
++    assert.equal(deniedResult,'denied');
++    const ws=new WebSocket(url().replace('http:','ws:')+'/extension',{origin:`chrome-extension://${extensionId}`});
++    await new Promise(resolve=>ws.on('open',resolve));
++    ws.send(JSON.stringify({token:bridge.config.extensionToken}));
++    await new Promise(resolve=>ws.once('message',resolve));
++    let deliveries=0;
++    ws.on('message',message=> {const rpc=JSON.parse(message);if(rpc.op){deliveries++;assert.ok(rpc.deadline>Date.now());}});
++    const mutation={version:1,id:'uncertain',op:'act',action:'click',ref:'x',lease:'x',pageId:'x',epoch:1};
++    const first=await (await post(mutation)).json();assert.equal(first.status,'UNCERTAIN');
++    assert.deepEqual(await (await post(mutation)).json(),first);
++    assert.equal(deliveries,1);
++    assert.equal((await (await post({...mutation,ref:'other'})).json()).error,'REQUEST_ID_CONFLICT');
++    ws.send(JSON.stringify({id:'uncertain',status:'COMPLETED'}));await wait(20);
++    assert.deepEqual(await (await post(mutation)).json(),first);
++    ws.terminate();await bridge.close();
++    bridge=await startBridge({directory,extensionId,timeout:250});
++    assert.deepEqual(await (await post(mutation)).json(),first);
++    assert.equal(fs.statSync(path.join(directory,'connection.json')).mode & 0o777,0o600);
++  } finally {await bridge.close();fs.rmSync(directory,{recursive:true,force:true});}
++});
+diff --git a/tests/browser.test.mjs b/tests/browser.test.mjs
+new file mode 100644
+--- /dev/null
++++ b/tests/browser.test.mjs
+@@ -0,0 +1,145 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import http from 'node:http';
++import {execFile} from 'node:child_process';
++import {promisify} from 'node:util';
++import {createRequire} from 'node:module';
++import {startBridge} from '../cli/bridge.mjs';
++const workbench=process.env.SYSTEM_AGENTIC_ROOT || path.resolve('../..');
++const require=createRequire(`${process.env.SYSTEM_AGENTIC_PLAYWRIGHT_PROJECT || `${workbench}/design-os-system-one/projects/voice-browser-agent`}/package.json`);
++const {chromium}=require('playwright');
++const root=path.resolve('.');
++const {id:extensionId}=JSON.parse(fs.readFileSync('shared/extension-id.json'));
++const chromePath=(process.env.CHROMIUM_EXECUTABLE_PATH || path.join(os.homedir(),'Library/Caches/ms-playwright/chromium-1248/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
++
++test('real Chromium: pairing, three semantic workflows, fences and handoff',async t=> {
++  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'agent-browser-test-'));
++  const bridge=await startBridge({directory:path.join(directory,'bridge'),extensionId,timeout:5000});
++  const fixture=http.createServer((req,res)=> {
++    res.setHeader('Content-Type','text/html');
++    const kind=req.url.slice(1);
++    res.end(`<!doctype html><title>${kind} fixture</title><h1>${kind==='auth'?'Sign in to continue':kind==='challenge'?'Verify you are human':kind==='payment'?'Checkout':kind}</h1>
++      ${kind==='notion'?'<div role="textbox" aria-label="Page content" contenteditable="true">Old content</div>':'<label>Title<input aria-label="Title" value="Old title"></label>'}
++      <button id="save"><span>Save</span></button><p id="status"></p><script>
++      const input=document.querySelector('input,[contenteditable]');
++      const saved=localStorage.getItem('${kind}');if(saved){if(input.tagName==='INPUT')input.value=saved;else input.textContent=saved;}
++      document.querySelector('#save').onclick=e=>{const text=input.value??input.textContent;localStorage.setItem('${kind}',text);document.querySelector('#status').textContent='Saved: '+text+' trusted='+e.isTrusted;};
++      </script>`);
++  });
++  await new Promise(resolve=>fixture.listen(0,'127.0.0.1',resolve));
++  const base=`http://127.0.0.1:${fixture.address().port}`;
++  const context=await chromium.launchPersistentContext(path.join(directory,'profile'),{executablePath:chromePath,headless:true,args:[`--disable-extensions-except=${root}/dist`,`--load-extension=${root}/dist`]});
++  t.after(async()=> {await context.close();await bridge.close();await new Promise(resolve=>fixture.close(resolve));fs.rmSync(directory,{recursive:true,force:true});});
++  const page=await context.newPage();await page.goto(`${base}/github`);
++  const pair=await context.newPage();await pair.goto(`chrome-extension://${extensionId}/pair.html`);
++  await pair.locator('#port').fill(String(bridge.config.port));
++  await pair.locator('#token').fill(bridge.config.extensionToken);
++  await pair.getByRole('button',{name:'Pair selected tab',exact:true}).click();
++  await assert.doesNotReject(()=>pair.locator('#result').filter({hasText:'PAIRED'}).waitFor());
++  let serial=0;
++  const rpc=async (op,extra={})=> {
++    const response=await fetch(`http://127.0.0.1:${bridge.config.port}/rpc`,{method:'POST',headers:{Authorization:`Bearer ${bridge.config.controllerToken}`,'Content-Type':'application/json'},body:JSON.stringify({version:1,id:`test-${++serial}`,op,...extra})});
++    return response.json();
++  };
++  for(const kind of ['github','notion','generic']) {
++    await page.goto(`${base}/${kind}`);
++    let observed=await rpc('observe');assert.equal(observed.status,'COMPLETED',JSON.stringify(observed));
++    const input=observed.elements.find(e=>e.role==='textbox');assert.ok(input,JSON.stringify(observed));
++    const action={ref:input.ref,lease:observed.lease,epoch:observed.epoch,pageId:observed.pageId,action:'fill',text:`Updated ${kind}`};
++    assert.equal((await rpc('act',action)).status,'COMPLETED');
++    observed=await rpc('observe');
++    const save=observed.elements.find(e=>e.name==='Save');
++    await page.evaluate(()=>{window.saveCount=0;document.querySelector('#save').addEventListener('click',()=>window.saveCount++);});
++    const requestId=`save-${kind}`;
++    const click={id:requestId,ref:save.ref,lease:observed.lease,epoch:observed.epoch,pageId:observed.pageId,action:'click'};
++    const result=await rpc('act',click);assert.equal(result.status,'COMPLETED',JSON.stringify(result));
++    assert.match(await page.locator('#status').innerText(),new RegExp(`Saved: Updated ${kind} trusted=true`));
++    // Exact duplicate returns receipt, never a second input dispatch.
++    assert.deepEqual(await rpc('act',click),result);
++    assert.equal(await page.evaluate(()=>window.saveCount),1);
++    await page.reload();
++    assert.equal(await page.locator('input,[contenteditable]').evaluate(e=>e.value??e.textContent),`Updated ${kind}`);
++    const stale=await rpc('act',{...action,id:`stale-${kind}`});assert.match(stale.error,/STALE_/);
++  }
++  // Execute the actual provider-neutral module, not a bridge-only mock.
++  await page.goto(`${base}/notion`);
++  const python = `import sys,json
++from pathlib import Path
++from providers.runtime import ProviderTask
++from modules import browser_extension_transport as transport
++from modules.browser_adapter import execute_browser_module,BrowserAdapterError
++transport.CONNECTION=Path(sys.argv[1])
++context={"browser":{"transport":"extension","authorized_origins":[sys.argv[2]],"allow_external_mutation":True,"expect_text":"Saved: Module verified","actions":[{"action":"fill","role":"textbox","name":"Page content","text":"Module verified"},{"action":"click","role":"button","name":"Save"}]}}
++try:
++ execute_browser_module(ProviderTask(workspace=Path.cwd(),objective="deny writes",context=context))
++ raise AssertionError("READ_ONLY allowed mutation")
++except BrowserAdapterError as error:
++ assert "WORKSPACE_WRITE" in str(error)
++result=execute_browser_module(ProviderTask(workspace=Path.cwd(),objective="fixture edit",context=context,execution_policy="WORKSPACE_WRITE"))
++assert result["domain_outcome"]=="BROWSER_VERIFIED"
++assert len(result["evidence"])==2
++context["browser"]={"transport":"extension","authorized_origins":["https://unauthorized.example"]}
++try:
++ execute_browser_module(ProviderTask(workspace=Path.cwd(),objective="deny origin",context=context))
++ raise AssertionError("wrong origin accepted")
++except BrowserAdapterError as error:
++ assert "outside authorized_origins" in str(error)
++print(json.dumps({"module":"PASS","read_only":"DENIED","wrong_origin":"DENIED","evidence":result["evidence"]}))`;
++  const integration=await promisify(execFile)('python3',['-c',python,path.join(directory,'bridge/connection.json'),base],{cwd:root,env:{...process.env,PYTHONPATH:`${workbench}/agent-brain`}});
++  assert.equal(JSON.parse(integration.stdout).module,'PASS');
++  assert.match(await page.locator('#status').innerText(),/Saved: Module verified trusted=true/);
++  // Bounded bulk workflow: three independent rows, persisted by distinct targets.
++  await page.goto(`${base}/bulk`);
++  await page.evaluate(()=> {
++    document.body.innerHTML='<h1>Bulk editor</h1><p id="status"></p>';
++    for(let i=0;i<3;i++) {
++      const input=document.createElement('input');input.setAttribute('aria-label',`Item ${i}`);document.body.append(input);
++      const button=document.createElement('button');button.textContent=`Save ${i}`;
++      button.onclick=e=>{localStorage.setItem(`item-${i}`,input.value);document.querySelector('#status').textContent=`Saved item ${i}: ${input.value}; trusted=${e.isTrusted}`;};document.body.append(button);
++    }
++  });
++  const batchPython=`import sys,json\nfrom pathlib import Path\nfrom providers.runtime import ProviderTask\nfrom modules import browser_extension_transport as transport\nfrom modules.browser_adapter import execute_browser_module\ntransport.CONNECTION=Path(sys.argv[1])\nactions=[]\nfor i in range(3):\n actions.extend([{"action":"fill","role":"textbox","name":f"Item {i}","text":f"Batch {i}"},{"action":"click","role":"button","name":f"Save {i}"}])\nresult=execute_browser_module(ProviderTask(workspace=Path.cwd(),objective="batch fixture",execution_policy="WORKSPACE_WRITE",context={"browser":{"transport":"extension","actions":actions,"authorized_origins":[sys.argv[2]],"allow_external_mutation":True,"expect_text":"Saved item 2: Batch 2; trusted=true"}}))\nassert len(result["evidence"])==6\nprint(json.dumps({"batch":"PASS"}))`;
++  const batch=await promisify(execFile)('python3',['-c',batchPython,path.join(directory,'bridge/connection.json'),base],{cwd:root,env:{...process.env,PYTHONPATH:`${workbench}/agent-brain`}});
++  assert.equal(JSON.parse(batch.stdout).batch,'PASS');
++  assert.deepEqual(await page.evaluate(()=>[0,1,2].map(i=>localStorage.getItem(`item-${i}`))),['Batch 0','Batch 1','Batch 2']);
++  // Chromium AX observes closed shadow roots; native input reaches the textbox.
++  await page.goto(`${base}/shadow`);
++  await page.evaluate(()=> {
++    document.body.innerHTML='<h1>Closed shadow</h1><section></section><p id="status"></p>';
++    const root=document.querySelector('section').attachShadow({mode:'closed'});
++    root.innerHTML='<input aria-label="Shadow title"><button>Save shadow</button>';
++    root.querySelector('button').onclick=e=>{document.querySelector('#status').textContent=`Shadow saved: ${root.querySelector('input').value}; trusted=${e.isTrusted}`;};
++  });
++  let shadow=await rpc('observe');
++  let target=shadow.elements.find(e=>e.name==='Shadow title');assert.ok(target);
++  assert.equal((await rpc('act',{ref:target.ref,lease:shadow.lease,epoch:shadow.epoch,pageId:shadow.pageId,action:'fill',text:'Closed root'})).status,'COMPLETED');
++  shadow=await rpc('observe');target=shadow.elements.find(e=>e.name==='Save shadow');
++  assert.equal((await rpc('act',{ref:target.ref,lease:shadow.lease,epoch:shadow.epoch,pageId:shadow.pageId,action:'click'})).status,'COMPLETED');
++  assert.equal(await page.locator('#status').innerText(),'Shadow saved: Closed root; trusted=true');
++  // Unnamed rich contenteditable blocks are common in Notion-like editors.
++  await page.goto(`${base}/rich-editor`);
++  await page.evaluate(()=>{document.body.innerHTML='<h1>Rich editor</h1><div contenteditable="true">Old block</div>';});
++  const rich=await rpc('observe');const block=rich.elements.find(e=>e.role==='textbox');assert.ok(block,JSON.stringify(rich));
++  assert.equal((await rpc('act',{ref:block.ref,lease:rich.lease,epoch:rich.epoch,pageId:rich.pageId,action:'fill',text:'New block'})).status,'COMPLETED');
++  assert.equal(await page.locator('[contenteditable]').innerText(),'New block');
++  // An overlay must never redirect a click to a different control.
++  await page.goto(`${base}/generic`);
++  const covered=await rpc('observe');
++  await page.evaluate(()=>{const cover=document.createElement('div');cover.style='position:fixed;inset:0;background:white;z-index:99999';document.body.append(cover);});
++  assert.equal((await rpc('act',{ref:covered.elements.find(e=>e.name==='Save').ref,lease:covered.lease,epoch:covered.epoch,pageId:covered.pageId,action:'click'})).error,'OCCLUDED_TARGET');
++  for(const [kind,code] of [['auth','BLOCKED_AUTH'],['challenge','BLOCKED_CHALLENGE'],['payment','BLOCKED_PAYMENT']]) {
++    await page.goto(`${base}/${kind}`);assert.equal((await rpc('observe')).error,code);
++  }
++  await page.goto(`${base}/generic`);
++  const observed=await rpc('observe');
++  await page.evaluate(()=>history.pushState({},'', '/other'));
++  const stale=await rpc('act',{ref:observed.elements.find(e=>e.name==='Save').ref,lease:observed.lease,epoch:observed.epoch,pageId:observed.pageId,action:'click'});
++  assert.match(stale.error,/STALE_/);
++  await page.goto('data:text/html,other-origin');
++  assert.equal((await rpc('observe')).error,'BLOCKED_POLICY');
++  assert.equal((await rpc('handoff')).status,'COMPLETED');
++  assert.equal((await rpc('observe')).error,'NOT_PAIRED');
++});

@@ -28,3 +28,9 @@ jobs:
         run: python scripts/install-references.py --check-only
       - name: Bootstrap contract tests
         run: python -m unittest scripts.test_bootstrap
+      - name: Extension policy tests (no browser or network)
+        env:
+          PYTHONPATH: agent-brain
+        run: python -m unittest modules.test_browser_extension_transport
+      - name: Extension install plan and integrity (no network)
+        run: python scripts/install-browser-extension.py

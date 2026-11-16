@@ -11,6 +11,16 @@ Watch the [54-second English introduction](https://github.com/NamAIEngineer/syst
 
 The composition is reproducible from [`media/`](media/), with [captions](media/system-agentic-intro.vtt), a [transcript](media/transcript.md), and sanitized [evidence readbacks](media/evidence/). JSON values come from a local run pinned to public commit `7b7168a`; the advisory result did not authorize or submit a task. Connector geometry and policy panels are labeled illustrative in the film. No credentials, account data, or external writes are included.
 
+## Optional paired browser extension
+
+The browser module now supports an opt-in Chromium extension transport with
+explicit tab/origin pairing, native click/fill, sequential batches, navigation
+fencing and non-replayed uncertain receipts. GitHub, Notion and generic pages
+share a bounded semantic contract. Public reads and local editor fixtures were
+verified; authenticated private-site writes are not certified. No service,
+account access or model fallback is enabled by cloning this repository.
+See [installation, permissions, evidence and limits](docs/integrations/browser-extension.md).
+
 ## First run
 
 macOS, Linux, or Windows with Python 3.10+ and Git:

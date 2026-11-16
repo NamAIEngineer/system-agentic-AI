@@ -44,6 +44,22 @@ def _safe_relative(root: Path, value: object, *, default: str) -> Path:
 
 
 def execute_browser_module(task: ProviderTask) -> dict[str, Any]:
+    context = task.context.get("browser") if isinstance(task.context.get("browser"), dict) else task.context
+    if context.get("transport") == "extension":
+        from modules.browser_extension_transport import ExtensionTransportError, execute_extension_browser
+        try:
+            return execute_extension_browser(task, context)
+        except ExtensionTransportError as exc:
+            if exc.status in {"UNCERTAIN", "PENDING"} or exc.evidence:
+                uncertain = exc.status in {"UNCERTAIN", "PENDING"}
+                return {"execution_status": "UNKNOWN" if uncertain else "FAILED",
+                        "domain_outcome": "BROWSER_UNCERTAIN" if uncertain else "BROWSER_PARTIAL",
+                        "summary": str(exc), "errors": [{"code": "BROWSER_UNCERTAIN" if uncertain else "BROWSER_PARTIAL", "message": str(exc)}],
+                        "evidence": exc.evidence + ([{"receipt_id": exc.request_id, "instruction": "read receipt; never replay the mutation"}] if exc.request_id else []),
+                        "artifacts": []}
+            raise BrowserAdapterError(str(exc)) from exc
+    if context.get("transport") not in (None, "playwright"):
+        raise BrowserAdapterError("unsupported browser transport")
     health = browser_health()
     if health["status"] != "READY":
         raise BrowserAdapterError("browser runtime is unavailable")

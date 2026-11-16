@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-16 — optional paired Chromium transport
+
+- Extend browser.automation with explicit extension transport and scoped task policy.
+- Add opt-in pinned installer and checksummed implementation patch; preserve upstream license.
+- Add native semantic input, batching, navigation fences and uncertain receipt recovery.
+- Keep profiles/credentials out of Git and default Playwright unchanged; document verified scope.
+
 ## v0.1.0-rc2 — 2026-11-07
 
 - Cross-platform smoke gate fixed for disposable bytecode and Windows shell path behavior.

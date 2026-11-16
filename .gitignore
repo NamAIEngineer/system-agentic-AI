@@ -118,3 +118,6 @@ Library/
 # Generated video render output and local dependencies
 media/out/
 media/node_modules/
+
+# Optional extension pairing, browser profiles and receipts stay private.
+/agent-brain/.browser-agent/extension/

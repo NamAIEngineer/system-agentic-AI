@@ -127,7 +127,10 @@
       "requires_provider": null,
       "verification": [
         "agent-brain/modules/browser_adapter.py",
-        "agent-brain/modules/browser_runner.mjs"
+        "agent-brain/modules/browser_runner.mjs",
+        "agent-brain/modules/browser_extension_transport.py",
+        "agent-brain/modules/test_browser_extension_transport.py",
+        "scripts/system-agentic-browser-extension"
       ],
       "availability_probe": {
         "type": "executable",
@@ -143,7 +146,17 @@
       "priority": 110,
       "metadata": {
         "engine": "Playwright",
-        "scope": "disposable local browser context; workspace artifacts only"
+        "scope": "disposable local browser context; workspace artifacts only",
+        "extension_transport": {
+          "implementation_root": "${SYSTEM_AGENTIC_AI_ROOT}/.system-agentic-local/browser-extension-implementation",
+          "protocol": "Agent RPC v1",
+          "engine": "chromium",
+          "availability": "requires_live_pairing",
+          "readiness": "CONTROLLED",
+          "permission_boundary": "explicit authorized_origins; WORKSPACE_WRITE and allow_external_mutation for actions",
+          "firefox": "UNAVAILABLE",
+          "safari": "UNAVAILABLE"
+        }
       }
     },
     {

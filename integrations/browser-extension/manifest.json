@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "upstream": "https://github.com/jangtrinh/design-os-browser-extension.git",
+  "revision": "27ccff76fd151d37b05e104d29b4d95d76b59666",
+  "patch_sha256": "bed4ebea197bdb45ed79e8ac8e6f598cf1748ef792537ee4fa6f690105c5b0ff",
+  "license": "PolyForm Shield 1.0.0; preserve upstream required notice",
+  "engine": "chromium",
+  "status": "CONTROLLED"
+}

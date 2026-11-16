@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Build/start/status for the opt-in Chromium extension, without account access."""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'agent-brain'))
+from modules.browser_extension_transport import CONNECTION, extension_health
+
+registry = json.loads((ROOT / 'agent-brain/modules/registry.json').read_text())
+module = next(item for item in registry['modules'] if item['id'] == 'browser-agent')
+implementation = Path(module['metadata']['extension_transport']['implementation_root'].replace('${SYSTEM_AGENTIC_AI_ROOT}', str(ROOT)))
+operation = sys.argv[1] if len(sys.argv) >= 2 else 'help'
+if operation == 'status':
+    print(json.dumps(extension_health(), ensure_ascii=False))
+elif operation == 'build':
+    subprocess.run(['node', 'scripts/build.mjs'], cwd=implementation, check=True)
+elif operation == 'open':
+    if not CONNECTION.is_file():
+        raise SystemExit('Start the local bridge first')
+    os.execvp('node', ['node', str(implementation / 'scripts/open-browser.mjs'), str(ROOT), str(CONNECTION)])
+elif operation == 'receipt' and len(sys.argv) == 3:
+    import re
+    import urllib.request
+    from modules.browser_extension_transport import _connection
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', sys.argv[2]):
+        raise SystemExit('Invalid receipt ID')
+    config = _connection()
+    request = urllib.request.Request(f"http://127.0.0.1:{config['port']}/receipts/{sys.argv[2]}",
+                                     headers={'Authorization': f"Bearer {config['controllerToken']}"})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(request, timeout=5) as response:
+        print(response.read(256000).decode())
+elif operation == 'start':
+    if not (implementation / 'dist/manifest.json').is_file():
+        raise SystemExit('Build the extension first: system-agentic-browser-extension build')
+    extension_id = json.loads((implementation / 'shared/extension-id.json').read_text())['id']
+    os.execvp('node', ['node', str(implementation / 'cli/bridge.mjs'), str(CONNECTION.parent), extension_id])
+else:
+    print('Usage: system-agentic-browser-extension build|start|open|status|receipt ID')
+    print('Load unpacked extension:', implementation / 'dist')
+    print('Then load the private connection file in its pairing popup:', CONNECTION)

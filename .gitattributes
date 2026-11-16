@@ -1,0 +1,2 @@
+# The installer verifies this patch byte-for-byte on every platform.
+integrations/browser-extension/implementation.patch -text

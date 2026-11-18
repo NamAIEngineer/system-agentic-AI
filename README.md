@@ -174,3 +174,15 @@ Original System Agentic AI code in this repository is MIT-licensed where the
 owner has distribution rights. Reference repositories remain separate and
 retain their own licenses. See [LICENSE](LICENSE) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Claude and DeepSeek workspace instructions
+
+- `AGENTS.md` remains the shared canonical instruction file.
+- [`CLAUDE.md`](CLAUDE.md) imports the shared rules for Claude Code.
+- [`DEEPSEEK.md`](DEEPSEEK.md) is an explicit guide for a host using DeepSeek.
+  Ask that host to read it; do not assume automatic filename discovery.
+
+Claude startup prompt: `Read CLAUDE.md and inspect this workspace read-only.`
+DeepSeek startup prompt: `Read DEEPSEEK.md and AGENTS.md, then inspect this workspace read-only.`
+Instruction files do not install providers, change API configuration, authorize
+external data flow or prove execution support.

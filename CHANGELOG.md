@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-18 — Claude and DeepSeek instruction entrypoints
+
+- Import canonical shared rules from CLAUDE.md and add explicit DEEPSEEK.md guidance.
+- Document host/backend and data-flow boundaries without enabling providers.
+- Check both instruction entrypoints in setup, doctor and smoke validation.
+
 ## 2026-11-16 — optional paired Chromium transport
 
 - Extend browser.automation with explicit extension transport and scoped task policy.

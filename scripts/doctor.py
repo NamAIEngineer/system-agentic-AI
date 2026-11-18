@@ -100,7 +100,7 @@ def run() -> dict[str, Any]:
     add(checks, "python", "PASS" if sys.version_info >= (3, 10) else "BLOCKED", version=platform.python_version())
     add(checks, "git", "PASS" if shutil.which("git") else "BLOCKED", executable=bool(shutil.which("git")))
     required = [
-        "AGENTS.md", "CLAUDE.md", "README.md", "WORKFLOW.md", "LICENSE", "VERSION",
+        "AGENTS.md", "CLAUDE.md", "DEEPSEEK.md", "README.md", "WORKFLOW.md", "LICENSE", "VERSION",
         "THIRD_PARTY_NOTICES.md", "agent-brain/operating-contract.md",
         "agent-brain/providers/registry.json", "agent-brain/modules/registry.json",
         "products/agent-runtime/agentic_runtime.py", "packages/agent-core/package.json",

@@ -48,3 +48,10 @@ Quyet setup is separately approved:
 python3 scripts/setup-quyet.py --check-only --json
 python3 scripts/setup-quyet.py --verify --json
 ```
+
+## Additional host entrypoints
+
+Claude Code: read `CLAUDE.md`. Hosts using DeepSeek: explicitly read
+`DEEPSEEK.md` and `AGENTS.md`. Both follow the shared operating contract;
+check actual host tools and provider configuration before execution. These
+entrypoints do not change credentials, endpoints or provider availability.

@@ -36,7 +36,7 @@ def parser() -> argparse.ArgumentParser:
 
 def required_files() -> list[str]:
     return [
-        "AGENTS.md", "CLAUDE.md", "README.md", "WORKFLOW.md", "LICENSE", "VERSION",
+        "AGENTS.md", "CLAUDE.md", "DEEPSEEK.md", "README.md", "WORKFLOW.md", "LICENSE", "VERSION",
         "agent-brain/operating-contract.md", "agent-brain/providers/registry.json",
         "agent-brain/skills/system-agentic-ai/SKILL.md", "products/agent-runtime/agentic_runtime.py",
         "packages/agent-core/package.json", "sources.manifest.json",
